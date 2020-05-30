@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,48 +16,34 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 
 #include <vector>
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
 namespace {
 
 template <DataType DT>
-Status HandleSliceToElement(const Tensor& parent, Tensor* element, int index) {
+Status HandleSliceToElement(const Tensor& parent, Tensor* element,
+                            int64 index) {
   typedef typename EnumToDataType<DT>::Type T;
   DCHECK_NE(parent.dim_size(0), 0);
+  DCHECK_GE(index, 0);
   if (element->NumElements() != (parent.NumElements() / parent.dim_size(0))) {
     TensorShape chip_shape = parent.shape();
     chip_shape.RemoveDim(0);
     return errors::Internal(
         "HandleSliceToElement Cannot copy slice: number of elements does not "
         "match.  Shapes are: [element]: ",
-        element->shape().DebugString(), ", [parent slice]: ",
-        chip_shape.DebugString());
+        element->shape().DebugString(),
+        ", [parent slice]: ", chip_shape.DebugString());
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);
-  return Status::OK();
-}
-
-template <DataType DT>
-Status HandleElementToSlice(const Tensor& element, Tensor* parent, int index) {
-  typedef typename EnumToDataType<DT>::Type T;
-  DCHECK_NE(parent->dim_size(0), 0);
-  if (element.NumElements() != (parent->NumElements() / parent->dim_size(0))) {
-    TensorShape chip_shape = parent->shape();
-    chip_shape.RemoveDim(0);
-    return errors::Internal(
-        "HandleElementToSlice Cannot copy slice: number of elements does not "
-        "match.  Shapes are: [element]: ",
-        element.shape().DebugString(), ", [parent slice]: ",
-        chip_shape.DebugString());
-  }
-  auto parent_as_matrix = parent->flat_outer_dims<T>();
-  parent_as_matrix.chip(index, 0) = element.flat<T>();
   return Status::OK();
 }
 
@@ -71,6 +57,8 @@ QueueBase::QueueBase(int32 capacity, const DataTypeVector& component_dtypes,
       component_shapes_(component_shapes),
       name_(name),
       closed_(false) {}
+
+QueueBase::~QueueBase() {}
 
 Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
   if (tuple.size() != static_cast<size_t>(num_components())) {
@@ -259,10 +247,10 @@ void QueueBase::Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
       mutex_lock lock(mu_);
       enqueue_attempts_.emplace_back(
           0, callback, ctx, nullptr, CancellationManager::kInvalidToken,
-          [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          [this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("Queue '", name_, "' is already closed."));
+                  errors::Cancelled("Queue '", name_, "' is already closed."));
             } else {
               closed_ = true;
             }
@@ -283,9 +271,21 @@ bool QueueBase::TryAttemptLocked(Action action,
   while (!done && !attempts->empty()) {
     if (attempts->front().is_cancelled) {
       if (action == kEnqueue) {
-        LOG(INFO) << "Skipping cancelled enqueue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled enqueue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled enqueue attempt with queue not closed";
+        }
       } else {
-        LOG(INFO) << "Skipping cancelled dequeue attempt";
+        if (closed_) {
+          VLOG(1) << "Skipping cancelled dequeue attempt";
+        } else {
+          LOG(WARNING)
+              << name_
+              << ": Skipping cancelled dequeue attempt with queue not closed";
+        }
       }
       attempts->pop_front();
     } else {
@@ -335,58 +335,14 @@ void QueueBase::FlushUnlocked() {
 }
 
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
-                                     int index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (parent.dtype() == DT) {                                             \
-    TF_RETURN_IF_ERROR(HandleSliceToElement<DT>(parent, element, index)); \
-    return Status::OK();                                                  \
-  }
-  HANDLE_TYPE(DT_FLOAT);
-  HANDLE_TYPE(DT_DOUBLE);
-  HANDLE_TYPE(DT_INT32);
-  HANDLE_TYPE(DT_UINT8);
-  HANDLE_TYPE(DT_INT16);
-  HANDLE_TYPE(DT_INT8);
-  HANDLE_TYPE(DT_STRING);
-  HANDLE_TYPE(DT_COMPLEX64);
-  HANDLE_TYPE(DT_INT64);
-  HANDLE_TYPE(DT_BOOL);
-  HANDLE_TYPE(DT_QINT8);
-  HANDLE_TYPE(DT_QUINT8);
-  HANDLE_TYPE(DT_QINT32);
-  HANDLE_TYPE(DT_QINT16);
-  HANDLE_TYPE(DT_QUINT16);
-#undef HANDLE_TYPE
-  return errors::Unimplemented("CopySliceToElement Unhandled data type: ",
-                               parent.dtype());
+                                     int64 index) {
+  return batch_util::CopySliceToElement(parent, element, index);
 }
 
-// Static method
+/* static */
 Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                     int index) {
-#define HANDLE_TYPE(DT)                                                   \
-  if (element.dtype() == DT) {                                            \
-    TF_RETURN_IF_ERROR(HandleElementToSlice<DT>(element, parent, index)); \
-    return Status::OK();                                                  \
-  }
-  HANDLE_TYPE(DT_FLOAT);
-  HANDLE_TYPE(DT_DOUBLE);
-  HANDLE_TYPE(DT_INT32);
-  HANDLE_TYPE(DT_UINT8);
-  HANDLE_TYPE(DT_INT16);
-  HANDLE_TYPE(DT_INT8);
-  HANDLE_TYPE(DT_STRING);
-  HANDLE_TYPE(DT_COMPLEX64);
-  HANDLE_TYPE(DT_INT64);
-  HANDLE_TYPE(DT_BOOL);
-  HANDLE_TYPE(DT_QINT8);
-  HANDLE_TYPE(DT_QUINT8);
-  HANDLE_TYPE(DT_QINT32);
-  HANDLE_TYPE(DT_QINT16);
-  HANDLE_TYPE(DT_QUINT16);
-#undef HANDLE_TYPE
-  return errors::Unimplemented("CopyElementToSlice Unhandled data type: ",
-                               element.dtype());
+                                     int64 index) {
+  return batch_util::CopyElementToSlice(element, parent, index);
 }
 
 }  // namespace tensorflow

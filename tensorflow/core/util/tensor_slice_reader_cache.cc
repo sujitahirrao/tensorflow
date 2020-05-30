@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
-#include "tensorflow/core/lib/gtl/stl_util.h"
+#include <utility>
+
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -36,13 +37,14 @@ const TensorSliceReader* TensorSliceReaderCacheWrapper::GetReader(
   if (!cache_) {
     cache_ = new TensorSliceReaderCache;
   }
-  return cache_->GetReader(filepattern, open_function, preferred_shard);
+  return cache_->GetReader(filepattern, std::move(open_function),
+                           preferred_shard);
 }
 
 TensorSliceReaderCache::TensorSliceReaderCache() {}
 
 TensorSliceReaderCache::~TensorSliceReaderCache() {
-  for (auto pair : readers_) {
+  for (const auto& pair : readers_) {
     delete pair.second.second;
   }
 }
@@ -52,7 +54,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 
-#ifdef __GXX_RTTI
+#if defined(__GXX_RTTI) || defined(_CPPRTTI)
   // Get the function pointer from the open_function value.
   TensorSliceReaderCache::OpenFuncType* func_ptr =
       open_function.target<TensorSliceReaderCache::OpenFuncType>();
@@ -88,11 +90,11 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     mu_.lock();
     if (tmp_reader->status().ok()) {
       reader = tmp_reader;
-      readers_[filepattern] = make_pair(*func_ptr, reader);
+      readers_[filepattern] = std::make_pair(*func_ptr, reader);
     } else {
       delete tmp_reader;
     }
-    CHECK_EQ(1, still_opening_.erase(filepattern));
+    CHECK_EQ(size_t{1}, still_opening_.erase(filepattern));
     VLOG(1) << "Cached TensorSliceReader for " << filepattern << ": " << reader;
   } else {
     auto cached_val = readers_[filepattern];

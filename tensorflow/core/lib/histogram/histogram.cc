@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ Histogram::Histogram(gtl::ArraySlice<double> custom_bucket_limits)
                             custom_bucket_limits.end()),
       bucket_limits_(custom_bucket_limits_) {
 #ifndef NDEBUG
-  DCHECK_GT(bucket_limits_.size(), 0);
+  DCHECK_GT(bucket_limits_.size(), size_t{0});
   // Verify that the bucket boundaries are strictly increasing
   for (size_t i = 1; i < bucket_limits_.size(); i++) {
     DCHECK_GT(bucket_limits_[i], bucket_limits_[i - 1]);

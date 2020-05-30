@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,153 +13,161 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.histogram_ops."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import histogram_ops
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import googletest
-
 import numpy as np
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import histogram_ops
+from tensorflow.python.platform import test
 
-class HistogramFixedWidthTest(test_util.TensorFlowTestCase):
+
+class BinValuesFixedWidth(test.TestCase):
+
+  def test_empty_input_gives_all_zero_counts(self):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = [0.0, 5.0]
+    values = []
+    expected_bins = []
+    with self.cached_session():
+      bins = histogram_ops.histogram_fixed_width_bins(
+          values, value_range, nbins=5)
+      self.assertEqual(dtypes.int32, bins.dtype)
+      self.assertAllClose(expected_bins, self.evaluate(bins))
+
+  def test_1d_values_int32_output(self):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = [0.0, 5.0]
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    expected_bins = [0, 0, 1, 2, 4, 4]
+    with self.cached_session():
+      bins = histogram_ops.histogram_fixed_width_bins(
+          values, value_range, nbins=5, dtype=dtypes.int64)
+      self.assertEqual(dtypes.int32, bins.dtype)
+      self.assertAllClose(expected_bins, self.evaluate(bins))
+
+  def test_1d_float64_values_int32_output(self):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = np.float64([0.0, 5.0])
+    values = np.float64([-1.0, 0.0, 1.5, 2.0, 5.0, 15])
+    expected_bins = [0, 0, 1, 2, 4, 4]
+    with self.cached_session():
+      bins = histogram_ops.histogram_fixed_width_bins(
+          values, value_range, nbins=5)
+      self.assertEqual(dtypes.int32, bins.dtype)
+      self.assertAllClose(expected_bins, self.evaluate(bins))
+
+  def test_2d_values(self):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = [0.0, 5.0]
+    values = constant_op.constant(
+        [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]], shape=(2, 3))
+    expected_bins = [[0, 0, 1], [2, 4, 4]]
+    with self.cached_session():
+      bins = histogram_ops.histogram_fixed_width_bins(
+          values, value_range, nbins=5)
+      self.assertEqual(dtypes.int32, bins.dtype)
+      self.assertAllClose(expected_bins, self.evaluate(bins))
+
+
+class HistogramFixedWidthTest(test.TestCase):
 
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
-  def test_one_update_on_constant_input(self):
+  @test_util.run_deprecated_v1
+  def test_with_invalid_value_range(self):
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 1 but is rank 0"):
+      histogram_ops.histogram_fixed_width(values, 1.0)
+    with self.assertRaisesRegexp(ValueError, "Dimension must be 2 but is 3"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 2.0, 3.0])
+
+  @test_util.run_deprecated_v1
+  def test_with_invalid_nbins(self):
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=[1, 2])
+    with self.assertRaisesRegexp(
+        ValueError, "Requires nbins > 0"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=-5)
+
+  def test_empty_input_gives_all_zero_counts(self):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
-    nbins = [5]
     value_range = [0.0, 5.0]
-    new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    values = []
+    expected_bin_counts = [0, 0, 0, 0, 0]
+    with self.session(use_gpu=True):
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
+      self.assertEqual(dtypes.int32, hist.dtype)
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
+
+  def test_1d_values_int64_output(self):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = [0.0, 5.0]
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
     expected_bin_counts = [2, 1, 1, 0, 2]
-    with self.test_session() as sess:
-      hist = variables.Variable(array_ops.zeros(nbins, dtype=dtypes.int32))
-      hist_update = histogram_ops.histogram_fixed_width(hist, new_values,
-                                                        value_range)
-      variables.initialize_all_variables().run()
-      self.assertTrue(hist.dtype.is_compatible_with(hist_update.dtype))
-      updated_hist_array = sess.run(hist_update)
+    with self.session(use_gpu=True):
+      hist = histogram_ops.histogram_fixed_width(
+          values, value_range, nbins=5, dtype=dtypes.int64)
+      self.assertEqual(dtypes.int64, hist.dtype)
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
-      # The new updated_hist_array is returned by the updating op.
-      self.assertAllClose(expected_bin_counts, updated_hist_array)
-
-      # hist should contain updated values, but eval() should not change it.
-      self.assertAllClose(expected_bin_counts, hist.eval())
-      self.assertAllClose(expected_bin_counts, hist.eval())
-
-  def test_one_update_on_constant_2d_input(self):
+  def test_1d_float64_values(self):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
-    nbins = [5]
-    value_range = [0.0, 5.0]
-    new_values = [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]]
+    value_range = np.float64([0.0, 5.0])
+    values = np.float64([-1.0, 0.0, 1.5, 2.0, 5.0, 15])
     expected_bin_counts = [2, 1, 1, 0, 2]
-    with self.test_session() as sess:
-      hist = variables.Variable(array_ops.zeros(nbins, dtype=dtypes.int32))
-      hist_update = histogram_ops.histogram_fixed_width(hist, new_values,
-                                                        value_range)
-      variables.initialize_all_variables().run()
-      self.assertTrue(hist.dtype.is_compatible_with(hist_update.dtype))
-      updated_hist_array = sess.run(hist_update)
+    with self.session(use_gpu=True):
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
+      self.assertEqual(dtypes.int32, hist.dtype)
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
-      # The new updated_hist_array is returned by the updating op.
-      self.assertAllClose(expected_bin_counts, updated_hist_array)
-
-      # hist should contain updated values, but eval() should not change it.
-      self.assertAllClose(expected_bin_counts, hist.eval())
-      self.assertAllClose(expected_bin_counts, hist.eval())
-
-  def test_two_updates_on_constant_input(self):
+  def test_2d_values(self):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
-    nbins = [5]
     value_range = [0.0, 5.0]
-    new_values_1 = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
-    new_values_2 = [1.5, 4.5, 4.5, 4.5, 0.0, 0.0]
-    expected_bin_counts_1 = [2, 1, 1, 0, 2]
-    expected_bin_counts_2 = [4, 2, 1, 0, 5]
-    with self.test_session() as sess:
-      hist = variables.Variable(array_ops.zeros(nbins, dtype=dtypes.int32))
-      new_values = array_ops.placeholder(dtypes.float32, shape=[6])
-      hist_update = histogram_ops.histogram_fixed_width(hist, new_values,
-                                                        value_range)
-      variables.initialize_all_variables().run()
-      updated_hist_array = sess.run(hist_update,
-                                    feed_dict={new_values: new_values_1})
+    values = [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]]
+    expected_bin_counts = [2, 1, 1, 0, 2]
+    with self.session(use_gpu=True):
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
+      self.assertEqual(dtypes.int32, hist.dtype)
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
-      # The new updated_hist_array is returned by the updating op.
-      # hist should contain the updated values.
-      self.assertAllClose(expected_bin_counts_1, updated_hist_array)
-      self.assertAllClose(expected_bin_counts_1, hist.eval())
-
-      updated_hist_array = sess.run(hist_update,
-                                    feed_dict={new_values: new_values_2})
-      self.assertAllClose(expected_bin_counts_2, updated_hist_array)
-      self.assertAllClose(expected_bin_counts_2, hist.eval())
-
-  def test_two_updates_on_scalar_input(self):
-    # Bins will be:
-    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
-    nbins = [5]
+  @test_util.run_deprecated_v1
+  def test_shape_inference(self):
     value_range = [0.0, 5.0]
-    new_values_1 = 1.5
-    new_values_2 = 2.5
-    expected_bin_counts_1 = [0, 1, 0, 0, 0]
-    expected_bin_counts_2 = [0, 1, 1, 0, 0]
-    with self.test_session() as sess:
-      hist = variables.Variable(array_ops.zeros(nbins, dtype=dtypes.int32))
-      new_values = array_ops.placeholder(dtypes.float32, shape=[])
-      hist_update = histogram_ops.histogram_fixed_width(hist, new_values,
-                                                        value_range)
-      variables.initialize_all_variables().run()
+    values = [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]]
+    expected_bin_counts = [2, 1, 1, 0, 2]
+    placeholder = array_ops.placeholder(dtypes.int32)
+    with self.session(use_gpu=True):
+      hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
+      self.assertAllEqual(hist.shape.as_list(), (5,))
+      self.assertEqual(dtypes.int32, hist.dtype)
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
-      # The new updated_hist_array is returned by the updating op.
-      # hist should contain the updated values.
-      updated_hist_array = sess.run(hist_update,
-                                    feed_dict={new_values: new_values_1})
-      self.assertAllClose(expected_bin_counts_1, updated_hist_array)
-      self.assertAllClose(expected_bin_counts_1, hist.eval())
-
-      updated_hist_array = sess.run(hist_update,
-                                    feed_dict={new_values: new_values_2})
-      self.assertAllClose(expected_bin_counts_2, updated_hist_array)
-      self.assertAllClose(expected_bin_counts_2, hist.eval())
-
-  def test_multiple_random_3d_updates_results_in_right_dist(self):
-    # Update with uniform 3-D rvs.  Resultant
-    # histogram should be uniform.  Use only 3 bins because with many bins it
-    # would be unlikely that all would be close to 1/n.  If someone ever wants
-    # to test that, it would be better to check that the cdf was linear.
-    nbins = [3]
-    value_range = [1.0, 4.14159]
-    with self.test_session() as sess:
-      hist = variables.Variable(array_ops.zeros(nbins, dtype=dtypes.int32))
-      new_values = array_ops.placeholder(dtypes.float32, shape=[4, 4, 4])
-      hist_update = histogram_ops.histogram_fixed_width(hist, new_values,
-                                                        value_range)
-      variables.initialize_all_variables().run()
-
-      for _ in range(100):
-        # Map the rv: U[0, 1] --> U[value_range[0], value_range[1]].
-        new_values_arr = (
-            value_range[0] +
-            (value_range[1] - value_range[0]) * self.rng.rand(4, 4, 4))
-
-        # The new updated_hist_array is returned by the updating op.
-        # hist should contain the updated values.
-        updated_hist_array = sess.run(hist_update,
-                                      feed_dict={new_values: new_values_arr})
-
-    pmf = updated_hist_array / float(updated_hist_array.sum())
-    np.testing.assert_allclose(1 / 3, pmf, atol=0.02)
+      hist = histogram_ops.histogram_fixed_width(
+          values, value_range, nbins=placeholder)
+      self.assertEquals(hist.shape.ndims, 1)
+      self.assertIs(hist.shape.dims[0].value, None)
+      self.assertEqual(dtypes.int32, hist.dtype)
+      self.assertAllClose(expected_bin_counts, hist.eval({placeholder: 5}))
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

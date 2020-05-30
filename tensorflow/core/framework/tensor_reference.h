@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_REFERENCE_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_REFERENCE_H_
 
-#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
@@ -42,39 +41,13 @@ class TensorReference {
     if (buf_) buf_->Unref();
   }
 
-  // Return an estimate of the total bytes being kept alive by this reference.
-  size_t TotalBytes() const {
-    // We add 128 as a baseline to account for per-Tensor metadata
-    return 128 + (buf_ ? buf_->size() : 0);
-  }
-
   void FillDescription(AllocationDescription* description) const {
     if (buf_) buf_->FillAllocationDescription(description);
-  }
-
-  // Convenience function for de-duplicating tensor references.
-  bool SharesBufferWith(const TensorReference& t) const {
-    return buf_ == t.buf_;
-  }
-
-  // Convenience function for de-duplicating tensor references.
-  bool SharesBufferWith(const Tensor& t) const {
-    return buf_ == (t.buf_ ? t.buf_->root_buffer() : nullptr);
-  }
-
-  // Convenience function for de-duplicating tensor references.
-  size_t BufferHash() const { return std::hash<TensorBuffer*>()(buf_); }
-
-  // A constructor used only for tests
-  explicit TensorReference(TensorBuffer* test_buffer) : buf_(test_buffer) {
-    if (buf_) buf_->Ref();
   }
 
  private:
   TensorBuffer* buf_;
 };
-
-typedef gtl::InlinedVector<TensorReference, 4> TensorReferenceVector;
 
 }  // namespace tensorflow
 

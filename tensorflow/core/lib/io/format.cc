@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include <limits>
 
 #include "tensorflow/core/lib/io/format.h"
 
@@ -78,12 +80,17 @@ Status Footer::DecodeFrom(StringPiece* input) {
 Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
                  BlockContents* result) {
   result->data = StringPiece();
-  result->cachable = false;
+  result->cacheable = false;
   result->heap_allocated = false;
 
   // Read the block contents as well as the type/crc footer.
   // See table_builder.cc for the code that built this structure.
   size_t n = static_cast<size_t>(handle.size());
+
+  if (kBlockTrailerSize > std::numeric_limits<size_t>::max() - n) {
+    return errors::DataLoss("handle.size() too big");
+  }
+
   char* buf = new char[n + kBlockTrailerSize];
   StringPiece contents;
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
@@ -119,11 +126,11 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
         delete[] buf;
         result->data = StringPiece(data, n);
         result->heap_allocated = false;
-        result->cachable = false;  // Do not double-cache
+        result->cacheable = false;  // Do not double-cache
       } else {
         result->data = StringPiece(buf, n);
         result->heap_allocated = true;
-        result->cachable = true;
+        result->cacheable = true;
       }
 
       // Ok
@@ -143,7 +150,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
       delete[] buf;
       result->data = StringPiece(ubuf, ulength);
       result->heap_allocated = true;
-      result->cachable = true;
+      result->cacheable = true;
       break;
     }
     default:

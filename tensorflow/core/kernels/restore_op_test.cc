@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,9 +28,12 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -41,7 +43,6 @@ class RestoreOpTest : public OpsTestBase {
  protected:
   // Makes an operation to restore two tensors
   void MakeRestoreOp(DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "Restore")
                      .Input(FakeInput())
                      .Input(FakeInput())
@@ -63,21 +64,23 @@ Tensor MakeInput(const TensorShape& shape,
 TEST_F(RestoreOpTest, RestoreSimple) {
   const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
   const std::vector<string> tensor_names = {
-      "tensor_bool",  "tensor_int",    "tensor_float",  "tensor_double",
-      "tensor_qint8", "tensor_qint32", "tensor_uint8",  "tensor_int8",
-      "tensor_int16", "tensor_int64",  "tensor_string", "tensor_complex64"};
+      "tensor_bool",  "tensor_int",        "tensor_float",  "tensor_double",
+      "tensor_qint8", "tensor_qint32",     "tensor_uint8",  "tensor_int8",
+      "tensor_int16", "tensor_int64",      "tensor_string", "tensor_complex64",
+      "tensor_half",  "tensor_float_empty"};
 
   // We first need to write a tensor using the save_op
   {
     // Initialize an operation
     NodeDef save;
-    TF_ASSERT_OK(NodeDefBuilder("myop", "Save")
-                     .Input(FakeInput())
-                     .Input(FakeInput())
-                     .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
-                                       DT_QINT8, DT_QINT32, DT_UINT8, DT_INT8,
-                                       DT_INT16, DT_STRING, DT_COMPLEX64}))
-                     .Finalize(&save));
+    TF_ASSERT_OK(
+        NodeDefBuilder("myop", "Save")
+            .Input(FakeInput())
+            .Input(FakeInput())
+            .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8,
+                              DT_QINT32, DT_UINT8, DT_INT8, DT_INT16, DT_STRING,
+                              DT_COMPLEX64, DT_HALF}))
+            .Finalize(&save));
 
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
@@ -94,11 +97,11 @@ TEST_F(RestoreOpTest, RestoreSimple) {
 
     // Input #0 is the file name
     Tensor input_0(DT_STRING, TensorShape({}));
-    input_0.scalar<string>()() = filename;
+    input_0.scalar<tstring>()() = filename;
     inputs.push_back({nullptr, &input_0});
 
     // Input #1 is the tensor names
-    Tensor input_1 = MakeInput<string>(
+    Tensor input_1 = MakeInput<tstring>(
         TensorShape({static_cast<int>(tensor_names.size())}),
         [&tensor_names](int x) -> string { return tensor_names[x]; });
     inputs.push_back({nullptr, &input_1});
@@ -149,7 +152,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
                                        [](int x) -> int64 { return x - 9; });
     inputs.push_back({nullptr, &input_11});
     // Input #12 is a 1-d string tensor
-    Tensor input_12 = MakeInput<string>(
+    Tensor input_12 = MakeInput<tstring>(
         TensorShape({2}), [](int x) -> string { return x ? "yes" : "no"; });
     inputs.push_back({nullptr, &input_12});
     // Input #13 is a 1-d complex64 tensor
@@ -157,7 +160,17 @@ TEST_F(RestoreOpTest, RestoreSimple) {
         TensorShape({2, 3}),
         [](int x) -> complex64 { return complex64(100 + x, 200 + x); });
     inputs.push_back({nullptr, &input_13});
-
+    // Input #14 is a 2-d half tensor
+    Tensor input_14 =
+        MakeInput<Eigen::half>(TensorShape({2, 4}), [](int x) -> Eigen::half {
+          return static_cast<Eigen::half>(x) / Eigen::half(5);
+        });
+    inputs.push_back({nullptr, &input_14});
+    // Input #15 is a 2-d empty float tensor
+    Tensor input_15 = MakeInput<float>(TensorShape({2, 0}), [](int x) -> float {
+      return static_cast<float>(x) / 10;
+    });
+    inputs.push_back({nullptr, &input_15});
     OpKernelContext::Params params;
     params.device = device.get();
     params.frame_iter = FrameAndIter(0, 0);
@@ -178,10 +191,10 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d bool tensor
   {
     MakeRestoreOp(DT_BOOL);
-    AddInput<string>(TensorShape({}),
-                     [&filename](int x) -> string { return filename; });
-    AddInput<string>(TensorShape({}),
-                     [&](int x) -> string { return tensor_names[0]; });
+    AddInput<tstring>(TensorShape({}),
+                      [&filename](int x) -> tstring { return filename; });
+    AddInput<tstring>(TensorShape({}),
+                      [&](int x) -> tstring { return tensor_names[0]; });
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
@@ -193,7 +206,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d integer tensor
   {
     MakeRestoreOp(DT_INT32);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[1];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[1];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({10});
@@ -205,7 +218,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d float tensor
   {
     MakeRestoreOp(DT_FLOAT);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[2];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[2];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
@@ -217,7 +230,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d double tensor
   {
     MakeRestoreOp(DT_DOUBLE);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[3];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[3];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 4});
@@ -229,7 +242,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d qint8 tensor
   {
     MakeRestoreOp(DT_QINT8);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[4];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[4];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({3, 2});
@@ -241,7 +254,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 2-d qint32 tensor
   {
     MakeRestoreOp(DT_QINT32);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[5];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[5];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 3});
@@ -254,7 +267,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d uint8 tensor
   {
     MakeRestoreOp(DT_UINT8);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[6];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[6];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({11});
@@ -266,7 +279,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d int8 tensor
   {
     MakeRestoreOp(DT_INT8);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[7];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[7];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({7});
@@ -278,7 +291,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d int16 tensor
   {
     MakeRestoreOp(DT_INT16);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[8];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[8];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({7});
@@ -290,7 +303,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d int64 tensor
   {
     MakeRestoreOp(DT_INT64);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[9];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[9];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({9});
@@ -302,18 +315,18 @@ TEST_F(RestoreOpTest, RestoreSimple) {
   // The 1-d string tensor
   {
     MakeRestoreOp(DT_STRING);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[10];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[10];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
-    EXPECT_EQ("no", output->flat<string>()(0));
-    EXPECT_EQ("yes", output->flat<string>()(1));
+    EXPECT_EQ("no", output->flat<tstring>()(0));
+    EXPECT_EQ("yes", output->flat<tstring>()(1));
   }
   // The 2-d complex64 tensor
   {
     MakeRestoreOp(DT_COMPLEX64);
-    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[11];
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[11];
     TF_ASSERT_OK(RunOpKernel());
     Tensor* output = GetOutput(0);
     TensorShape expected({2, 3});
@@ -322,12 +335,33 @@ TEST_F(RestoreOpTest, RestoreSimple) {
       EXPECT_EQ(complex64(100 + i, 200 + i), output->flat<complex64>()(i));
     }
   }
+  // The 2-d half tensor
+  {
+    MakeRestoreOp(DT_HALF);
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[12];
+    TF_ASSERT_OK(RunOpKernel());
+    Tensor* output = GetOutput(0);
+    TensorShape expected({2, 4});
+    EXPECT_TRUE(output->shape().IsSameSize(expected));
+    for (int i = 0; i < 8; ++i) {
+      EXPECT_EQ(static_cast<Eigen::half>(i) / Eigen::half(5),
+                output->flat<Eigen::half>()(i));
+    }
+  }
+  // The 2-d empty float tensor
+  {
+    MakeRestoreOp(DT_FLOAT);
+    (*mutable_input(1).tensor).scalar<tstring>()() = tensor_names[13];
+    TF_ASSERT_OK(RunOpKernel());
+    Tensor* output = GetOutput(0);
+    TensorShape expected({2, 0});
+    EXPECT_TRUE(output->shape().IsSameSize(expected));
+  }
 }
 
 class RestoreSliceOpTest : public OpsTestBase {
  protected:
   void MakeRestoreSliceOp(DataType dt) {
-    RequireDefaultOps();
     TF_ASSERT_OK(NodeDefBuilder("myop", "RestoreSlice")
                      .Input(FakeInput())
                      .Input(FakeInput())
@@ -367,12 +401,12 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
 
     // Input #0 is the file name
     Tensor input_0(DT_STRING, TensorShape({}));
-    input_0.scalar<string>()() = filename;
+    input_0.scalar<tstring>()() = filename;
     inputs.push_back({nullptr, &input_0});
 
     // Input #1 is the tensor name
     Tensor input_1(DT_STRING, TensorShape({}));
-    input_1.scalar<string>()() = tensor_name;
+    input_1.scalar<tstring>()() = tensor_name;
     inputs.push_back({nullptr, &input_1});
 
     // Input #2 is a 4x16 integer tensor.
@@ -401,13 +435,13 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   MakeRestoreSliceOp(DT_INT32);
   string shape_and_slice = "4 16 0,2:-";
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&filename](int x) -> string { return filename; });
+  AddInput<tstring>(TensorShape({}),
+                    [&filename](int x) -> tstring { return filename; });
   // Add the tensor names
-  AddInput<string>(TensorShape({}),
-                   [&tensor_name](int x) -> string { return tensor_name; });
+  AddInput<tstring>(TensorShape({}),
+                    [&tensor_name](int x) -> tstring { return tensor_name; });
   // Add the tensor shape and slice
-  AddInput<string>(TensorShape({}), [&shape_and_slice](int x) -> string {
+  AddInput<tstring>(TensorShape({}), [&shape_and_slice](int x) -> tstring {
     return shape_and_slice;
   });
 

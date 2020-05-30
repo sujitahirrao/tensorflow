@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,73 +13,71 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
-#define TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_
 
 #include <string>
-#ifdef __GXX_RTTI
-#include <typeindex>
+
+#if defined(__GXX_RTTI) || defined(_CPPRTTI)
 #include <typeinfo>
 #endif  // __GXX_RTTI
+
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 // On some platforms, we would like to avoid using RTTI in order to have smaller
-// binary sizes. The following #ifdef section provides a non-RTTI
-// replacement for std::type_index (with a minimal set of functions needed by
-// the TensorFlow framework, and more can be added if necessary).
-#ifndef __GXX_RTTI
-
-// A thin TypeIndex class that mimics std::type_index but does not use RTTI. As
-// a result, it does not provide the actual name of the type, and only returns a
-// pre-baked string specifying that RTTI is disabled.
-// The hash code provided in this class is unique for each class. However, it is
-// generated at runtime so this hash code should not be serialized - the value
-// for the same type can change from run to run.
+// binary sizes. This file provides a thin TypeIndex class that mimics
+// std::type_index but does not use RTTI (with a minimal set of functions needed
+// by the TensorFlow framework, and more can be added if necessary). In the
+// absence of RTTI, it does not provide the actual name of the type, and only
+// returns a pre-baked string specifying that RTTI is disabled. The hash code
+// provided in this class is unique for each class. However, it is generated at
+// runtime so this hash code should not be serialized - the value for the same
+// type can change from run to run.
 class TypeIndex {
  public:
-  TypeIndex(const TypeIndex& src) : hash_(src.hash_) {}
+  TypeIndex(const TypeIndex& src) : hash_(src.hash_), name_(src.name_) {}
   TypeIndex& operator=(const TypeIndex& src) {
     hash_ = src.hash_;
+    name_ = src.name_;
     return *this;
   }
   bool operator==(const TypeIndex& rhs) const { return (hash_ == rhs.hash_); }
   bool operator!=(const TypeIndex& rhs) const { return (hash_ != rhs.hash_); }
   ~TypeIndex() {}
 
-  string name() const { return "[RTTI disabled for Android]"; }
+  const char* name() const { return name_; }
+
   uint64 hash_code() const { return hash_; }
 
   // Returns a TypeIndex object that corresponds to a typename.
   template <typename T>
-  static TypeIndex Make() {
+  static TypeIndex Make(const char* name) {
     static bool hash_bit[1];
-    return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)));
+    return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)),
+                     name);
   }
 
  private:
   // We hide the constructor of the TypeIndex class. Use the templated
   // Make<T>() function to create a TypeIndex object.
-  TypeIndex(const uint64 hash) : hash_(hash) {}
+  explicit TypeIndex(const uint64 hash, const char* name)
+      : hash_(hash), name_(name) {}
   uint64 hash_;
+  const char* name_;
 };
 
 template <typename T>
 inline TypeIndex MakeTypeIndex() {
-  return TypeIndex::Make<T>();
-}
-
-#else  // __GXX_RTTI
-
-// In the presence of RTTI, we will simply delegate to std::type_index for
-// runtime type inference.
-typedef std::type_index TypeIndex;
-template <typename T>
-inline TypeIndex MakeTypeIndex() {
-  return TypeIndex(typeid(T));
-}
-
+#if defined(__GXX_RTTI) || defined(_CPPRTTI)
+  // Use the real type name if we have RTTI.
+  return TypeIndex::Make<T>(typeid(T).name());
+#else
+  return TypeIndex::Make<T>("[RTTI disabled]");
 #endif  // __GXX_RTTI
+}
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_

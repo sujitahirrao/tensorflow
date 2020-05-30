@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,9 +28,11 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -39,8 +40,6 @@ namespace {
 
 class SparseToDenseTest : public OpsTestBase {
  protected:
-  void SetUp() override { RequireDefaultOps(); }
-
   void MakeOp(int dim, DataType index_type, DataType value_type) {
     TF_ASSERT_OK(NodeDefBuilder("sparsetodense", "SparseToDense")
                      .Input(FakeInput(index_type))
@@ -199,13 +198,7 @@ TEST_F(SparseToDenseTest, ThreeD_MultValues) {
 
 }  // namespace
 
-static int BM_Arg(int ndim, int n) { return (ndim * 1000000) + n; }
-static int NDIM_from_arg(int bm_arg) { return bm_arg / 1000000; }
-static int N_from_arg(int bm_arg) { return bm_arg % 1000000; }
-
-static void BM_SparseToDense(int iters, const int bm_arg) {
-  const int NDIM = NDIM_from_arg(bm_arg);
-  const int N = N_from_arg(bm_arg);
+static void BM_SparseToDense(int iters, int NDIM, int N) {
   // TODO(zhifengc): Switch to use kernel_benchmark_testlib.h
   tensorflow::testing::StopTiming();
 
@@ -218,7 +211,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
 
   // Create a dense tensor with dims [1, ..., 1, N]
   Tensor output_shape(DT_INT32, TensorShape({NDIM}));
-  Tensor sparse_indices(DT_INT32, TensorShape({N, NDIM}));
+  Tensor sparse_indices(DT_INT64, TensorShape({N, NDIM}));
   Tensor sparse_values(DT_FLOAT, TensorShape({N}));
   Tensor default_value(DT_FLOAT, TensorShape({}));
   auto output_shape_t = output_shape.vec<int32>();
@@ -226,7 +219,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
     output_shape_t(d) = (d == IndexDim) ? N : 3;
   }
 
-  auto sparse_indices_t = sparse_indices.matrix<int32>();
+  auto sparse_indices_t = sparse_indices.matrix<int64>();
   for (int n = 0; n < N; ++n) {
     for (int d = 0; d < NDIM; ++d)
       sparse_indices_t(n, d) = (d == IndexDim) ? n : 0;
@@ -275,21 +268,21 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
 }
 
 BENCHMARK(BM_SparseToDense)
-    ->Arg(BM_Arg(1, 10))
-    ->Arg(BM_Arg(1, 100))
-    ->Arg(BM_Arg(1, 1000))
-    ->Arg(BM_Arg(1, 10000))
-    ->Arg(BM_Arg(2, 10))
-    ->Arg(BM_Arg(2, 100))
-    ->Arg(BM_Arg(2, 1000))
-    ->Arg(BM_Arg(2, 10000))
-    ->Arg(BM_Arg(3, 10))
-    ->Arg(BM_Arg(3, 100))
-    ->Arg(BM_Arg(3, 1000))
-    ->Arg(BM_Arg(3, 10000))
-    ->Arg(BM_Arg(5, 10))
-    ->Arg(BM_Arg(5, 100))
-    ->Arg(BM_Arg(5, 1000))
-    ->Arg(BM_Arg(5, 10000));
+    ->ArgPair(1, 10)
+    ->ArgPair(1, 100)
+    ->ArgPair(1, 1000)
+    ->ArgPair(1, 10000)
+    ->ArgPair(2, 10)
+    ->ArgPair(2, 100)
+    ->ArgPair(2, 1000)
+    ->ArgPair(2, 10000)
+    ->ArgPair(3, 10)
+    ->ArgPair(3, 100)
+    ->ArgPair(3, 1000)
+    ->ArgPair(3, 10000)
+    ->ArgPair(5, 10)
+    ->ArgPair(5, 100)
+    ->ArgPair(5, 1000)
+    ->ArgPair(5, 10000);
 
 }  // namespace tensorflow
