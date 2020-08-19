@@ -29,7 +29,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_test.py"],
     deps = [
         ":test_base",
@@ -43,6 +43,17 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "cardinality_test",
+    srcs = ["cardinality_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -83,6 +94,7 @@ tf_py_test(
     name = "data_service_ops_test",
     size = "medium",
     srcs = ["data_service_ops_test.py"],
+    shard_count = 10,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -213,6 +225,7 @@ tf_py_test(
     name = "from_generator_test",
     size = "medium",
     srcs = ["from_generator_test.py"],
+    shard_count = 10,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
@@ -381,6 +394,19 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "len_test",
+    size = "small",
+    srcs = ["len_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -624,7 +650,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
     deps = [
         ":test_base",

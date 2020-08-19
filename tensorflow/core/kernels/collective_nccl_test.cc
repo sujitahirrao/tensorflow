@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -83,6 +84,8 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
+        work_queue_(std::make_shared<UnboundedWorkQueue>(
+            Env::Default(), "collective_executor")),
         col_exec_(nullptr) {}
 
   ~NcclTestBase() override {
@@ -118,7 +121,7 @@ class NcclTestBase : public ::testing::Test {
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
-        /*gpu_ring_order=*/nullptr);
+        /*gpu_ring_order=*/nullptr, work_queue_);
 
     // Initialize collective params.
     col_params_.name = "test_nccl_collective_op";
@@ -314,11 +317,11 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       NcclReducer reducer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                /*OpKernelContext=*/&ctx, &op_params,
-                                col_params_, exec_key, kStepId,
-                                /*input=*/&input_, /*output=*/&input_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_, /*output=*/&input_);
+      TF_CHECK_OK(reducer.InitializeCollectiveContext(col_ctx));
       Notification note;
       reducer.Run([this, &note](Status s) {
         status_ = s;
@@ -344,12 +347,12 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       NcclBroadcaster broadcaster;
-      CollectiveContext col_ctx(
+      auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/col_params_.is_source ? &input_ : nullptr,
           /*output=*/&input_);
-      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
+      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(col_ctx));
       Notification note;
       broadcaster.Run([this, &note](Status s) {
         status_ = s;
@@ -383,12 +386,12 @@ class NcclTestBase : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       NcclGatherer gatherer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                /*OpKernelContext=*/&ctx, &op_params,
-                                col_params_, exec_key, kStepId,
-                                /*input=*/&input_,
-                                /*output=*/&output_);
-      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(),
+          /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
+          /*input=*/&input_,
+          /*output=*/&output_);
+      TF_CHECK_OK(gatherer.InitializeCollectiveContext(col_ctx));
       Notification note;
       gatherer.Run([this, &note](Status s) {
         status_ = s;
@@ -413,6 +416,7 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;
   std::unique_ptr<DeviceMgr> dev_mgr_;
   std::vector<std::unique_ptr<DeviceInstance>> instances_;

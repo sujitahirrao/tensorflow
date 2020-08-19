@@ -43,8 +43,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:all_ops_resolver",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -81,6 +80,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -159,7 +159,7 @@ cc_binary(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_ops",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

@@ -25,10 +25,13 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -329,7 +332,7 @@ def get_func_graphs(op):
         op.get_attr("then_branch"), "_true_graph"),
             _get_func_graph_for_branch(
                 op.get_attr("else_branch"), "_false_graph"))
-  elif op.type == "Case":
+  elif op.type in ["Case", "StatelessCase"]:
     # TODO(b/141114088): investigate whether to cache graphs in forward pass
     return [_get_func_graph_for_branch(branch_fn)
             for branch_fn in op.get_attr("branches")]
@@ -984,6 +987,7 @@ def indexed_case(branch_index,
 
 
 @ops.RegisterGradient("Case")
+@ops.RegisterGradient("StatelessCase")
 def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a Case op produced by tf.switch_case."""
   # Get the Case operator (this logic handles the case where op is a MockOp)
@@ -1061,8 +1065,17 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   # This modifies the graphs in branch_grad_graphs.
   _make_output_composite_tensors_match(_CASE, branch_grad_graphs)
 
-  outputs = _build_case(case_op.inputs[0], branch_grad_graphs,
-                        branches_grad_inputs, name="gradient")
+  try:
+    lowering = case_op._get_attr_bool("_lower_using_switch_merge")
+  except errors_impl.NotFoundError:
+    lowering = None
+
+  outputs = _build_case(
+      case_op.inputs[0],
+      branch_grad_graphs,
+      branches_grad_inputs,
+      name="gradient",
+      lower_using_switch_merge=lowering)
 
   # The predicate has no gradient.
   return [None] + outputs
@@ -1101,10 +1114,24 @@ def _build_case(branch_index,
   # graphs in `branch_graphs`.
   case_inputs = _make_inputs_match(branch_graphs, branch_inputs)
 
+  stateful_ops = []
+  for bg in branch_graphs:
+    stateful_ops.extend([
+        op for op in bg.get_operations() if auto_control_deps.op_is_stateful(op)
+    ])
+
+  # TODO(b/161915509): Remove this after 08/20/2020. This is required to abide
+  # by 3-week forward compat window of new TF python op generating code with
+  # stale runtime binaries.
+  if (stateful_ops or not compat.forward_compatible(2020, 8, 20)):
+    op_fn = gen_functional_ops.case
+  else:
+    op_fn = gen_functional_ops.stateless_case
+
   # Create the Case op.
   with ops.control_dependencies(
       sum((list(bg.control_captures) for bg in branch_graphs), [])):
-    tensors = gen_functional_ops.case(
+    tensors = op_fn(
         branch_index,
         case_inputs, [t.dtype for t in branch_graphs[0].outputs],
         [util.create_new_tf_function(g) for g in branch_graphs],

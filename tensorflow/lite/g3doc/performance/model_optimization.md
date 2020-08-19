@@ -5,8 +5,8 @@ optimizations can be applied to models so that they can be run within these
 constraints. In addition, some optimizations allow the use of specialized
 hardware for accelerated inference.
 
-Tensorflow Lite and the
-[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
+TensorFlow Lite and the
+[TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
 provide tools to minimize the complexity of optimizing inference.
 
 It's recommended that you consider model optimization during your application
@@ -33,8 +33,8 @@ models have the following benefits:
     translate to better performance and stability.
 
 Quantization can reduce the size of a model in all of these cases, potentially
-at the expense of some accuracy. Pruning can reduce the size of a model for
-download by making it more easily compressible.
+at the expense of some accuracy. Pruning and clustering can reduce the size of a
+model for download by making it more easily compressible.
 
 ### Latency reduction
 
@@ -54,7 +54,7 @@ Some hardware accelerators, such as the
 with models that have been correctly optimized.
 
 Generally, these types of devices require models to be quantized in a specific
-way. See each hardware accelerators documentation to learn more about their
+way. See each hardware accelerator's documentation to learn more about their
 requirements.
 
 ## Trade-offs
@@ -70,7 +70,8 @@ certain models may gain some accuracy as a result of the optimization process.
 
 ## Types of optimization
 
-TensorFlow Lite currently supports optimization via quantization and pruning.
+TensorFlow Lite currently supports optimization via quantization, pruning and
+clustering.
 
 These are part of the
 [TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization),
@@ -79,9 +80,10 @@ with TensorFlow Lite.
 
 ### Quantization
 
-Quantization works by reducing the precision of the numbers used to represent a
-model's parameters, which by default are 32-bit floating point numbers. This
-results in a smaller model size and faster computation.
+[Quantization](https://www.tensorflow.org/model_optimization/guide/quantization/post_training)
+works by reducing the precision of the numbers used to represent a model's
+parameters, which by default are 32-bit floating point numbers. This results in
+a smaller model size and faster computation.
 
 The following types of quantization are available in TensorFlow Lite:
 
@@ -133,6 +135,17 @@ technique for reducing model download size.
 
 In the future, TensorFlow Lite will provide latency reduction for pruned models.
 
+### Clustering
+
+[Clustering](https://www.tensorflow.org/model_optimization/guide/clustering)
+works by grouping the weights of each layer in a model into a predefined number
+of clusters, then sharing the centroid values for the weights belonging to each
+individual cluster. This reduces the number of unique weight values in a model,
+thus reducing its complexity.
+
+As a result, clustered models can be compressed more effectively, providing
+deployment benefits similar to pruning.
+
 ## Development workflow
 
 As a starting point, check if the models in
@@ -145,7 +158,7 @@ For cases where the accuracy and latency targets are not met, or hardware
 accelerator support is important,
 [quantization-aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training){:.external}
 is the better option. See additional optimization techniques under the
-[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
+[TensorFlow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
 
 If you want to further reduce your model size, you can try [pruning](#pruning)
-prior to quantizing your models.
+and/or [clustering](#clustering) prior to quantizing your models.

@@ -415,6 +415,11 @@ REGISTER_OP("AnonymousSeedGenerator")
       return Status::OK();
     });
 
+REGISTER_OP("DatasetCardinality")
+    .Input("input_dataset: variant")
+    .Output("cardinality: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("DeleteSeedGenerator")
     .Input("handle: resource")
     .Input("deleter: variant")
@@ -826,6 +831,17 @@ REGISTER_OP("DatasetToGraphV2")
 REGISTER_OP("OptimizeDataset")
     .Input("input_dataset: variant")
     .Input("optimizations: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("optimization_configs: list(string) = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("OptimizeDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("optimizations_enabled: string")
+    .Input("optimizations_disabled: string")
+    .Input("optimizations_default: string")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")

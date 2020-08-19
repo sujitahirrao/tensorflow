@@ -156,9 +156,15 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
   const tensorflow::Tensor* t = nullptr;
 
   // TODO(nareshmodi): This call makes async calls sync calls. Fix this.
-  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+  if (handle->Type() == TensorHandle::LOCAL) {
+    TF_RETURN_IF_ERROR(handle->Tensor(&t));
 
-  t->shape().AsProto(proto);
+    t->shape().AsProto(proto);
+  } else {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(handle->Shape(&shape));
+    shape.AsProto(proto);
+  }
 
   return Status::OK();
 }
@@ -166,7 +172,8 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
 Status AddOpRetvalsToResponse(
     EagerContext* eager_context, int op_id, int num_retvals,
     TensorHandle** retvals, std::function<TensorProto*()> add_tensor_proto_fn,
-    std::function<TensorShapeProto*()> add_shape_proto_fn) {
+    std::function<TensorShapeProto*()> add_shape_proto_fn,
+    std::function<string*()> add_device_fn = nullptr) {
   if (op_id == kInvalidRemoteOpId) {
     // Copy the output tensors back along with the response, since the op id
     // is invalid which cannot be added to RemoteMgr.
@@ -175,10 +182,21 @@ Status AddOpRetvalsToResponse(
       retvals[i]->Unref();
     }
   } else {
-    eager_context->RemoteMgr()->AddOperationOutputs(
-        absl::MakeSpan(retvals, num_retvals), op_id);
     for (int i = 0; i < num_retvals; i++) {
       TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
+      const bool is_remote = retvals[i]->Type() == TensorHandle::REMOTE;
+      if (add_device_fn) {
+        *add_device_fn() =
+            is_remote ? absl::get<Device*>(
+                            retvals[i]->DeviceOrHostCPU(*eager_context))
+                            ->name()
+                      : "";
+      }
+      if (is_remote) {
+        retvals[i]->Unref();
+      } else {
+        eager_context->RemoteMgr()->AddOperationOutput(retvals[i], op_id, i);
+      }
     }
   }
   return Status::OK();
@@ -446,6 +464,12 @@ void EagerServiceImpl::RunComponentFunction(
         "Received RunComponentFunction request with remote function device. "));
     return;
   }
+  s = op->SetAttrBool("is_component_function", true);
+  if (!s.ok()) {
+    done(errors::Internal("Error setting is_component_function attribute: ",
+                          s.error_message()));
+    return;
+  }
 
   auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
@@ -473,6 +497,8 @@ void EagerServiceImpl::RunComponentFunction(
           wrapped_done(status);
           return;
         }
+        // The output device of a component function is the component device
+        // which is known on the default device of it's parent function.
         wrapped_done(AddOpRetvalsToResponse(
             eager_context, op_id, *num_retvals, retvals->data(),
             [response] { return response->add_tensor(); },
@@ -480,7 +506,8 @@ void EagerServiceImpl::RunComponentFunction(
       });
 }
 
-Status EagerServiceImpl::ExecuteOp(const Operation& operation,
+Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
+                                   const Operation& operation,
                                    EagerContext* eager_context,
                                    EagerExecutor* eager_executor,
                                    QueueResponse* queue_response) {
@@ -489,17 +516,37 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
 
+  auto cm = std::make_shared<CancellationManager>();
+  if (call_opts) {
+    op.SetCancellationManager(cm.get());
+    call_opts->SetCancelCallback([cm] { cm->StartCancel(); });
+  }
+
   absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
-  TF_RETURN_IF_ERROR(EagerExecute(&op, retvals.data(), &num_retvals));
+  TF_RETURN_IF_ERROR(op.Execute(
+      absl::MakeSpan(
+          reinterpret_cast<tensorflow::AbstractTensorHandle**>(retvals.data()),
+          num_retvals),
+      &num_retvals));
+
+  std::function<string*()> add_device_fn = nullptr;
+  // Send the output devices of a function back to let a client know where the
+  // outputs are. For a primitive op, an output devics is the op device which is
+  // known on a client.
+  if (op.is_function()) {
+    add_device_fn = [queue_response] { return queue_response->add_device(); };
+  }
 
   return AddOpRetvalsToResponse(
       eager_context, operation.id(), num_retvals, retvals.data(),
       [queue_response] { return queue_response->add_tensor(); },
-      [queue_response] { return queue_response->add_shape(); });
+      [queue_response] { return queue_response->add_shape(); },
+      std::move(add_device_fn));
 }
 
-Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
+Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
+                                 const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
@@ -520,7 +567,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      s = ExecuteOp(item.operation(), context->Context(), &executor,
+      s = ExecuteOp(call_opts, item.operation(), context->Context(), &executor,
                     queue_response);
     } else if (item.has_handle_to_decref()) {
       auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
@@ -685,7 +732,7 @@ Status EagerServiceImpl::SendPackedHandle(
   // Create a unshaped packed TensorHandle.
   TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
       std::move(handles_to_pack), handles.at(0)->dtype, TensorShape(),
-      eager_context, &packed_handle));
+      send_packed_handle.device_name(), eager_context, &packed_handle));
 
   for (auto* h : handles) {
     // Unref handle since it has a ref in the packed handle now.

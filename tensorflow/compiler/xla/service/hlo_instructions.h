@@ -136,8 +136,10 @@ class HloCompareInstruction : public HloInstruction {
  public:
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
                                  HloInstruction* rhs,
-                                 ComparisonDirection direction);
-  ComparisonDirection direction() const { return direction_; }
+                                 ComparisonDirection direction,
+                                 absl::optional<Comparison::Type> type);
+  ComparisonDirection direction() const { return compare_.GetDirection(); }
+  Comparison::Type type() const { return compare_.GetType(); }
   HloInstructionProto ToProto() const override;
 
  private:
@@ -151,7 +153,7 @@ class HloCompareInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  ComparisonDirection direction_;
+  Comparison compare_;
 };
 
 class HloTriangularSolveInstruction : public HloInstruction {
@@ -677,6 +679,21 @@ class HloBroadcastInstruction : public HloInstruction {
   std::vector<int64> dimensions_;
 };
 
+class HloDynamicReshapeInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicReshapeInstruction(
+      const Shape& shape, HloInstruction* data_operand,
+      absl::Span<HloInstruction* const> dim_sizes);
+
+  // Returns the input dim sizes dimensions, which is operands[1:]
+  absl::Span<HloInstruction* const> dim_sizes() const {
+    return absl::MakeSpan(operands()).subspan(1, operand_count());
+  }
+
+  // Returns the input dim size dimension, which is operands[1+i]
+  HloInstruction* dim_sizes(int64 i) const { return operands()[i + 1]; }
+};
+
 class HloReshapeInstruction : public HloInstruction {
  public:
   explicit HloReshapeInstruction(const Shape& shape, HloInstruction* operand,
@@ -1141,6 +1158,7 @@ class HloOutfeedInstruction : public HloInstruction {
   const Shape& outfeed_shape() const { return outfeed_shape_; }
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const { return outfeed_config_; }
+  void set_outfeed_config(const string& config) { outfeed_config_ = config; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 

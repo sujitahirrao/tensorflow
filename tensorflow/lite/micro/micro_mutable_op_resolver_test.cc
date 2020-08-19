@@ -65,52 +65,37 @@ TF_LITE_MICRO_TEST(TestOperations) {
   using tflite::MicroMutableOpResolver;
   using tflite::OpResolver;
 
-  static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
-                                 tflite::MockPrepare, tflite::MockInvoke};
+  static TfLiteRegistration r = {};
+  r.init = tflite::MockInit;
+  r.free = tflite::MockFree;
+  r.prepare = tflite::MockPrepare;
+  r.invoke = tflite::MockInvoke;
 
-  MicroMutableOpResolver<2> micro_op_resolver;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r, 1));
-
-  // Only one AddBuiltin per operator should return kTfLiteOk, regardless of
-  // what the version parameter is.
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, micro_op_resolver.AddBuiltin(
-                                            BuiltinOperator_CONV_2D, &r, 1));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, micro_op_resolver.AddBuiltin(
-                                            BuiltinOperator_CONV_2D, &r, 2));
-
+  MicroMutableOpResolver<1> micro_op_resolver;
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
-                          micro_op_resolver.AddCustom("mock_custom", &r, 2));
+                          micro_op_resolver.AddCustom("mock_custom", &r));
 
-  // Only one AddCustom per operator should return kTfLiteOk, regardless of
-  // what the version parameter is.
+  // Only one AddCustom per operator should return kTfLiteOk.
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
-                          micro_op_resolver.AddCustom("mock_custom", &r, 2));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
-                          micro_op_resolver.AddCustom("mock_custom", &r, 1));
+                          micro_op_resolver.AddCustom("mock_custom", &r));
 
   tflite::MicroOpResolver* resolver = &micro_op_resolver;
 
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(1),
+                          micro_op_resolver.GetRegistrationLength());
+
   const TfLiteRegistration* registration =
-      resolver->FindOp(BuiltinOperator_CONV_2D);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration->init(nullptr, nullptr, 0));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(nullptr, nullptr));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
-
-  TF_LITE_MICRO_EXPECT_EQ(2, micro_op_resolver.GetRegistrationLength());
-
-  registration = resolver->FindOp(BuiltinOperator_RELU);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
+      resolver->FindOp(BuiltinOperator_RELU);
+  TF_LITE_MICRO_EXPECT(nullptr == registration);
 
   registration = resolver->FindOp("mock_custom");
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration->init(nullptr, nullptr, 0));
+  TF_LITE_MICRO_EXPECT(nullptr != registration);
+  TF_LITE_MICRO_EXPECT(nullptr == registration->init(nullptr, nullptr, 0));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(nullptr, nullptr));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(nullptr, nullptr));
 
   registration = resolver->FindOp("nonexistent_custom");
-  TF_LITE_MICRO_EXPECT_EQ(nullptr, registration);
+  TF_LITE_MICRO_EXPECT(nullptr == registration);
 }
 
 TF_LITE_MICRO_TEST(TestErrorReporting) {
@@ -118,16 +103,14 @@ TF_LITE_MICRO_TEST(TestErrorReporting) {
   using tflite::BuiltinOperator_RELU;
   using tflite::MicroMutableOpResolver;
 
-  static TfLiteRegistration r = {tflite::MockInit, tflite::MockFree,
-                                 tflite::MockPrepare, tflite::MockInvoke};
+  static TfLiteRegistration r = {};
+  r.init = tflite::MockInit;
+  r.free = tflite::MockFree;
+  r.prepare = tflite::MockPrepare;
+  r.invoke = tflite::MockInvoke;
 
   tflite::MockErrorReporter mock_reporter;
-  MicroMutableOpResolver<2> micro_op_resolver(&mock_reporter);
-  TF_LITE_MICRO_EXPECT_EQ(false, mock_reporter.HasBeenCalled());
-  mock_reporter.ResetState();
-
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, micro_op_resolver.AddBuiltin(BuiltinOperator_CONV_2D, &r));
+  MicroMutableOpResolver<1> micro_op_resolver(&mock_reporter);
   TF_LITE_MICRO_EXPECT_EQ(false, mock_reporter.HasBeenCalled());
   mock_reporter.ResetState();
 
@@ -138,10 +121,7 @@ TF_LITE_MICRO_TEST(TestErrorReporting) {
 
   // Attempting to Add more operators than the class template parameter for
   // MicroMutableOpResolver should result in errors.
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, micro_op_resolver.AddBuiltin(BuiltinOperator_RELU, &r));
-  TF_LITE_MICRO_EXPECT_EQ(true, mock_reporter.HasBeenCalled());
-  mock_reporter.ResetState();
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, micro_op_resolver.AddRelu());
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
                           micro_op_resolver.AddCustom("mock_custom_1", &r));

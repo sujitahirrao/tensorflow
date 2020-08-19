@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -85,23 +86,6 @@ class ReusePortOption : public ::grpc::ServerBuilderOption {
 // static utility function
 RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
-}
-
-std::unique_ptr<GrpcWorkerEnv> CreateGrpcWorkerEnv() {
-  int num_cpus = port::NumSchedulableCPUs();
-  int64 num_completion_queues;
-  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
-                                      &num_completion_queues);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
-  }
-  int64 num_threads;
-  status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
-                               &num_threads);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_THREADS: " << status;
-  }
-  return absl::make_unique<GrpcWorkerEnv>(num_completion_queues, num_threads);
 }
 
 }  // namespace
@@ -265,6 +249,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
 
+  profiler_service_ = CreateProfilerService();
+  builder.RegisterService(profiler_service_.get());
+
   // extra service:
   if (opts.service_func != nullptr) {
     opts.service_func(&worker_env_, &builder);
@@ -275,7 +262,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     return errors::Unknown("Could not start gRPC server");
   }
   // Create the execution environment for the GRPC workers cache.
-  grpc_worker_env_ = CreateGrpcWorkerEnv();
+  grpc_worker_env_.reset(CreateGrpcWorkerEnv());
 
   WorkerCacheInterface* worker_cache;
   WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
@@ -284,9 +271,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   CHECK_NE(nullptr, worker_cache);
 
   if (opts.collective_mgr_func) {
-    worker_env_.collective_executor_mgr =
-        opts.collective_mgr_func(config, &worker_env_, worker_cache);
-    if (!worker_env_.collective_executor_mgr) {
+    worker_env_.collective_executor_mgr.reset(
+        opts.collective_mgr_func(config, &worker_env_, worker_cache));
+    if (worker_env_.collective_executor_mgr == nullptr) {
       return errors::Internal(
           "collective_mgr_func did not return CollectiveExecutorMgr");
     }
@@ -298,9 +285,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
         new CollectiveParamResolverDistributed(config, worker_env_.device_mgr,
                                                dev_resolver.get(), worker_cache,
                                                default_worker_name));
-    worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+    worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
         config, worker_env_.device_mgr, std::move(dev_resolver),
-        std::move(param_resolver), worker_cache, default_worker_name);
+        std::move(param_resolver), worker_cache, default_worker_name));
   }
 
   // Set up worker environment.
@@ -316,7 +303,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
-  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
+  master_env_.collective_executor_mgr =
+      worker_env_.collective_executor_mgr.get();
   StatsPublisherFactory stats_factory = opts.stats_factory;
   master_env_.master_session_factory =
       [config, stats_factory](
@@ -401,7 +389,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                    " differs from expected port ", bound_port_);
   }
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
-      channel_cache, worker_impl(), name_prefix, grpc_worker_env_.get());
+      channel_cache, grpc_worker_env(), worker_impl(), name_prefix);
   return Status::OK();
 }
 
@@ -450,6 +438,8 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
     return errors::InvalidArgument(
         "Failed to build worker cache with the provided server def.");
   }
+  // Transfer ownership of worker_cache to worker_env_.session_mgr.
+  worker_env_.session_mgr->ResetDefaultWorkerCache(worker_cache);
 
   string default_worker_name;
   string unused;
@@ -464,13 +454,14 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
       new CollectiveParamResolverDistributed(
           server_def_.default_session_config(), worker_env_.device_mgr,
           dev_resolver.get(), worker_cache, default_worker_name));
-  worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+  worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
       std::move(dev_resolver), std::move(param_resolver), worker_cache,
-      default_worker_name);
+      default_worker_name));
 
   master_env_.worker_cache = worker_cache;
-  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
+  master_env_.collective_executor_mgr =
+      worker_env_.collective_executor_mgr.get();
   return Status::OK();
 }
 

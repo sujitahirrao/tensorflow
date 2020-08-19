@@ -24,25 +24,87 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_embedding_v2
-from tensorflow.python.tpu import tpu_embedding_v2_test_lib
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.util import nest
 
 
-class CPUEmbeddingTest(tpu_embedding_v2_test_lib.EmbeddingTestBase):
+class CPUEmbeddingTest(test.TestCase):
 
   def setUp(self):
     super(CPUEmbeddingTest, self).setUp()
-    self._create_initial_data()
+
+    self.embedding_values = np.array(list(range(32)), dtype=np.float64)
+    self.initializer = init_ops_v2.Constant(self.embedding_values)
+    # Embedding for video initialized to
+    # 0 1 2 3
+    # 4 5 6 7
+    # ...
+    self.table_video = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=8,
+        dim=4,
+        initializer=self.initializer,
+        combiner='sum',
+        name='video')
+    # Embedding for user initialized to
+    # 0 1
+    # 2 3
+    # 4 5
+    # 6 7
+    # ...
+    self.table_user = tpu_embedding_v2_utils.TableConfig(
+        vocabulary_size=16,
+        dim=2,
+        initializer=self.initializer,
+        combiner='mean',
+        name='user')
+    self.feature_config = (
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_video, name='watched'),
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_video, name='favorited'),
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_user, name='friends'))
+
+    self.batch_size = 2
+    self.data_batch_size = 4
+
+    # One (global) batch of inputs
+    # sparse tensor for watched:
+    # row 0: 0
+    # row 1: 0, 1
+    # row 2: 0, 1
+    # row 3: 1
+    self.feature_watched_indices = [[0, 0], [1, 0], [1, 1],
+                                    [2, 0], [2, 1], [3, 0]]
+    self.feature_watched_values = [0, 0, 1, 0, 1, 1]
+    self.feature_watched_row_lengths = [1, 2, 2, 1]
+    # sparse tensor for favorited:
+    # row 0: 0, 1
+    # row 1: 1
+    # row 2: 0
+    # row 3: 0, 1
+    self.feature_favorited_indices = [[0, 0], [0, 1], [1, 0],
+                                      [2, 0], [3, 0], [3, 1]]
+    self.feature_favorited_values = [0, 1, 1, 0, 0, 1]
+    self.feature_favorited_row_lengths = [2, 1, 1, 2]
+    # sparse tensor for friends:
+    # row 0: 3
+    # row 1: 0, 1, 2
+    # row 2: 3
+    # row 3: 0, 1, 2
+    self.feature_friends_indices = [[0, 0], [1, 0], [1, 1], [1, 2],
+                                    [2, 0], [3, 0], [3, 1], [3, 2]]
+    self.feature_friends_values = [3, 0, 1, 2, 3, 0, 1, 2]
+    self.feature_friends_row_lengths = [1, 3, 1, 3]
 
   def _create_mid_level(self):
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     return tpu_embedding_v2.TPUEmbedding(
         feature_config=self.feature_config,
-        batch_size=self.batch_size,
         optimizer=optimizer)
 
   def _get_dense_tensors(self, dtype=dtypes.int32):
@@ -222,7 +284,6 @@ class CPUEmbeddingTest(tpu_embedding_v2_test_lib.EmbeddingTestBase):
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     mid_level = tpu_embedding_v2.TPUEmbedding(
         feature_config=feature_config,
-        batch_size=self.batch_size,
         optimizer=optimizer)
     features = tuple(self._get_sparse_tensors()[:1])
     with self.assertRaisesRegex(
@@ -232,6 +293,20 @@ class CPUEmbeddingTest(tpu_embedding_v2_test_lib.EmbeddingTestBase):
           weights=None,
           tables=mid_level.embedding_tables,
           feature_config=feature_config)
+
+  def test_cpu_no_optimizer(self):
+    feature_config = (
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_video, name='watched', max_sequence_length=2),)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config,
+        optimizer=None)
+    # Build the layer manually to create the variables. Normally calling enqueue
+    # would do this.
+    mid_level.build()
+    self.assertEqual(
+        list(mid_level._variables[self.table_video.name].keys()),
+        ['parameters'])
 
 
 if __name__ == '__main__':

@@ -77,17 +77,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "cardinality_test",
-    srcs = ["cardinality_test.py"],
-    deps = [
-        "//tensorflow/python/data/experimental/ops:cardinality",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "compression_ops_test",
     srcs = ["compression_ops_test.py"],
     deps = [
@@ -267,6 +256,18 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "io_test",
+    srcs = ["io_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -641,20 +642,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "replicate_cluster_test",
-    srcs = ["replicate_cluster_test.py"],
-    grpc_enabled = True,
-    tags = ["no_oss"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_combinations",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
 cuda_py_test(
     name = "scan_test",
     size = "small",
@@ -753,9 +740,12 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
         "@absl_py//absl/testing:parameterized",
     ],
 )

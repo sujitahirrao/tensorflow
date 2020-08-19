@@ -540,24 +540,6 @@ TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
               HasSubstr("Instruction shouldn't change layouts"));
 }
 
-TEST_F(HloVerifierTest, BitcastCanNotChangeElementType) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY BitcastCanNotChangeElementType {
-   constant.0 = f32[2] constant({0.0, 0.0})
-   ROOT bitcast = s32[2] bitcast(constant.0)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Bitcast can not change the element type"));
-}
-
 TEST_F(HloVerifierTestLayoutSensitive, BitcastNeedsSameNumberOfElements) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -1201,7 +1183,8 @@ TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
     p1 = f32[2,3]{1,0:S(1)} parameter(1)
     p2 = u32[] parameter(2)
-    tuple.1 = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p1, p2)
+    p3 = u32[] parameter(3)
+    tuple.1 = (f32[2,3], f32[2,3], u32[], u32[]) tuple(p0, p1, p2, p3)
     ROOT collective-permute-done.1 = f32[2,3]{1,0:S(1)} collective-permute-done(tuple.1)
   }
   )";

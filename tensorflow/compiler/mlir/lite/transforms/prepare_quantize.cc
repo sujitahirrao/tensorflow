@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -35,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 
 // NOLINTNEXTLINE
-static llvm::cl::list<std::string> quantize_whitelist(
-    "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of whitelisted functions to be "
+static llvm::cl::list<std::string> quantize_allowlist(
+    "tfl-test-quantize-allowlist", llvm::cl::value_desc("list"),
+    llvm::cl::desc("comma separated list of allowlisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 
@@ -108,7 +109,7 @@ class PrepareQuantizePass
 
   // Get the min and max values from the quantization specification for the
   // current function function and argument index. Uses default values if
-  // the function is specified in the `quantize_whitelist`.
+  // the function is specified in the `quantize_allowlist`.
   std::pair<llvm::Optional<double>, llvm::Optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
@@ -122,6 +123,10 @@ class PrepareQuantizePass
   // the best quantization practise. This also fixes some simple violations.
   void SanityCheckAndAdjustment(FuncOp func);
 
+  // Whether the func contains Quantize ops. This is used to determine whether
+  // to use the quantization parameters from the fixed output range property.
+  bool ContainsQuantizeOps(FuncOp func);
+
   QuantizationSpecs quant_specs_;
 };
 
@@ -132,7 +137,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   // Skip this function because it isn't the target function from the spec or
   // in the function while list.
   if (target_func != func_name &&
-      !llvm::is_contained(quantize_whitelist, func_name)) {
+      !llvm::is_contained(quantize_allowlist, func_name)) {
     return false;
   }
 
@@ -210,6 +215,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // one is returned directly, we decide to return the quantized result instead,
   // so this op can be quantized. This is only applied on the returned result
   // because the error will not be accumulated.
+
   func.walk([&](ReturnOp ret) {
     int i = 0;
     for (Value returned : ret.operands()) {
@@ -237,6 +243,58 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
         "Missing quantization parameter on the output might introduce "
         "quantization error!");
   });
+
+  // Check for  (Quant (Dequant $in), $qA) "qdq" pairs that couldn't be
+  // eliminated at this point.  This only occurs for the pattern
+  //      (Quant (Dequant (Quant $in, $qB)), $qA)   $qB != $qA
+  // where the  qdq pair denotes a non-trivial requantiziion of an
+  // alreadyquantized value. Since this makes little sense (directly quantizing
+  // (Quant $in, $qA) would introduce less quantization noise) the likley cause
+  // is an minor error in constructing the original network model that
+  // introduced back-to-back Fake Quantization operations. Hence: emit a
+  // warning. N.b. at this point weŕe (teporarility) in the quantization dialect
+  // (presuambly enalbe re-use in xla etc) quant::*QuantizeCastOp weŕe matching
+  // here.
+  //
+  func.walk([&](quant::QuantizeCastOp q_op) {
+    // If up with end up with
+    auto dq_op = dyn_cast_or_null<quant::DequantizeCastOp>(
+        q_op.getOperand().getDefiningOp());
+    if (!dq_op) {
+      return;
+    }
+    auto dq_arg = dq_op.getOperand();
+
+    if (!dq_arg.hasOneUse()) {
+      // The initial quanization is used sompleace else ... so it might be
+      // reasonable for it to requantized for another purpose.
+      // TODO: ideally would want to still check whether requanization narrows
+      // rather than widens the representation
+      return;
+    }
+
+    // Invariant:
+    // isa<quant::QuantizeCastOp>(dq_arg.getDefiningOp()) -->
+    // getdq_arg.getType() != q_op.getResult().getType()
+    //
+    // as otherwise qdq pair would have been optimized away.
+    auto qd_arg_def_q_op =
+        dyn_cast_or_null<quant::QuantizeCastOp>(dq_arg.getDefiningOp());
+    if (!qd_arg_def_q_op) {
+      return;
+    }
+
+    qd_arg_def_q_op.emitWarning()
+        << " quantizer's output has another quantizer (" << q_op.getLoc()
+        << ") as consumer - intentional?";
+  });
+}
+
+bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
+  for (const auto& op : func.getOps()) {
+    if (llvm::isa<quant::DequantizeCastOp>(op)) return true;
+  }
+  return false;
 }
 
 using PrepareQuantStats =
@@ -263,6 +321,7 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   int bit_width = quant_specs_.GetQuantizationTypeWidth();
+  bool enforce_fixed_output_range = ContainsQuantizeOps(func);
   if (is_signed) {
     patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
@@ -281,7 +340,8 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec);
+      GetOpQuantSpec,
+      enforce_fixed_output_range || quant_specs_.post_training_quantization);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

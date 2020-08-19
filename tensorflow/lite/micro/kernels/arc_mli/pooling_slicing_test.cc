@@ -25,7 +25,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -41,7 +41,7 @@ void TestAveragePoolingQuantized(
     const T* expected_output_data, const int* output_dims_data,
     float output_min, float output_max, TfLitePadding padding,
     TfLiteFusedActivation activation, T* output_data) {
-  static_assert(sizeof(T) == 1, "Only int8/uint8 data types allowed.");
+  static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -60,7 +60,7 @@ void TestAveragePoolingQuantized(
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
@@ -112,7 +112,7 @@ void TestMaxPoolQuantized(const int* input_dims_data, const T* input_data,
                           float output_min, float output_max,
                           const int* output_dims_data, TfLitePadding padding,
                           TfLiteFusedActivation activation, T* output_data) {
-  static_assert(sizeof(T) == 1, "Only int8/uint8 data types allowed.");
+  static_assert(sizeof(T) == 1, "Only int8_t/uint8_t data types allowed.");
 
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -131,7 +131,7 @@ void TestMaxPoolQuantized(const int* input_dims_data, const T* input_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_MAX_POOL_2D);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);

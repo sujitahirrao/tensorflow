@@ -32,9 +32,9 @@ path are also supported, for e.g.,
 [these quantized versions](https://www.tensorflow.org/lite/guide/hosted_models#quantized_models)
 on our Hosted Models page.
 
-## Hexagon Delegate Java API
+## Hexagon delegate Java API
 
-```
+```java
 public class HexagonDelegate implements Delegate, Closeable {
 
   /*
@@ -75,10 +75,11 @@ dependencies {
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
     *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
+    *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 04/28/2020 you should use v1.17.
+Note: As of 07/22/2020 you should use v1.20.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -96,8 +97,8 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 
 #### Step 3. Create a delegate and initialize a TensorFlow Lite Interpreter
 
-```
-import org.tensorflow.lite.experimental.HexagonDelegate;
+```java
+import org.tensorflow.lite.HexagonDelegate;
 
 // Create the Delegate instance.
 try {
@@ -116,9 +117,9 @@ if (hexagonDelegate != null) {
 }
 ```
 
-## Hexagon Delegate C API
+## Hexagon delegate C API
 
-```
+```c
 struct TfLiteHexagonDelegateOptions {
   // This corresponds to the debug level in the Hexagon SDK. 0 (default)
   // means no debug.
@@ -161,7 +162,7 @@ Void TfLiteHexagonInit();
 Void TfLiteHexagonTearDown();
 ```
 
-### Example Usage
+### Example usage
 
 #### Step 1. Edit app/build.gradle to use the nightly Hexagon delegate AAR
 
@@ -180,10 +181,12 @@ dependencies {
     “libhexagon_nn_skel_v66.so”
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
+    *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
+    *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 03/03/2020 you should use v1.14.
+Note: As of 07/22/2020 you should use v1.20.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -202,7 +205,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 #### Step 3. Include the C header
 
 *   The header file "hexagon_delegate.h" can be downloaded from
-    [GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h)
+    [GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/hexagon_delegate.h)
     or extracted from the Hexagon delegate AAR.
 
 #### Step 4. Create a delegate and initialize a TensorFlow Lite Interpreter
@@ -213,8 +216,8 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 
 *   Create a delegate, example:
 
-```
-#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+```c
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 
 // Assuming shared libraries are under "/data/local/tmp/"
 // If files are packaged with native lib in android App then it
@@ -260,7 +263,7 @@ ro.board.platform`).
 
 *   Which ops are supported by the delegate?
     *   See the current list of
-        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/README.md)
+        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/README.md)
 *   How can I tell that the model is using the DSP when I enable the delegate?
     *   Two log messages will be printed when you enable the delegate - one to
         indicate if the delegate was created and another to indicate how many
@@ -272,7 +275,7 @@ ro.board.platform`).
         ops. Any unsupported ops will run on the CPU.
 *   How can I build the Hexagon delegate AAR from source?
     *   Use `bazel build -c opt --config=android_arm64
-        tensorflow/lite/experimental/delegates/hexagon/java:tensorflow-lite-hexagon`.
+        tensorflow/lite/delegates/hexagon/java:tensorflow-lite-hexagon`.
 *   Why does Hexagon delegate fail to initialize although my Android device has
     a supported SoC?
     *   Verify if your device indeed has a supported SoC. Run `adb shell cat
