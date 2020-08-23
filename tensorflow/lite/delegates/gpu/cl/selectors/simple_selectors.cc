@@ -51,21 +51,16 @@ void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
   *ptr = absl::make_unique<LSTM>(std::move(operation));
 }
 
-void SelectReLU(const CreationContext& creation_context,
-                const ReLUAttributes& attr, const OperationDef& op_def,
-                std::unique_ptr<GPUOperation>* ptr) {
-  GPUOperation relu = CreateReLU(creation_context, op_def, attr);
-  *ptr = absl::make_unique<GPUOperation>(std::move(relu));
+std::unique_ptr<GPUOperation> SelectReLU(const ReLUAttributes& attr,
+                                         const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(CreateReLU(op_def, attr));
 }
 
-absl::Status SelectPReLU(const PReLUAttributes& attr,
-                         const CreationContext& creation_context,
-                         const OperationDef& op_def,
-                         std::unique_ptr<GPUOperation>* ptr) {
-  GPUOperation operation;
-  RETURN_IF_ERROR(CreatePReLU(creation_context, op_def, attr, &operation));
-  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectPReLU(const PReLUAttributes& attr,
+                                          const DeviceInfo& device_info,
+                                          const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(
+      CreatePReLU(device_info, op_def, attr));
 }
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,
@@ -193,13 +188,10 @@ std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
       CreateWinograd36To4x4(device_info, op_def, biases));
 }
 
-void SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr) {
-  GPUOperation operation =
-      CreateQuantizeAndDequantize(creation_context, op_def, attr);
-  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
+    const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(
+      CreateQuantizeAndDequantize(op_def, attr));
 }
 
 }  // namespace cl

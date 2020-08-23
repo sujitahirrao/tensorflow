@@ -417,7 +417,7 @@ distribute_py_test(
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
@@ -464,6 +464,21 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_models_test",
+    srcs = ["keras_models_test.py"],
+    main = "keras_models_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -743,6 +758,7 @@ py_test(
     tags = [
         "noasan",  # TODO(b/156029134)
         "nomsan",  # TODO(b/156029134)
+        "notap",  # TODO(b/165865820): restore when not flaky
         "notsan",  # TODO(b/156029134)
     ],
     deps = [
@@ -821,7 +837,9 @@ py_test(
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
     shard_count = 1,
-    tags = ["no_oss"],  # TODO(b/162119374): enable it in OSS.
+    tags = [
+        "no_oss",  # TODO(b/162119374): enable it in OSS.
+    ],
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
