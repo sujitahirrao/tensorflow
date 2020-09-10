@@ -6546,6 +6546,21 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
+  let summary = "Creates a handle to an in-scope variable.";
+
+  let description = [{
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
+  );
+}
+
 def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
@@ -10882,7 +10897,7 @@ def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
   let summary = "Delete the stack from its resource container.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_StackFree]>:$handle
   );
 
   let results = (outs);
@@ -10892,7 +10907,7 @@ def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
   let summary = "Pop the element at the top of the stack.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_StackRead,TF_StackWrite]>:$handle
   );
 
   let results = (outs
@@ -10906,7 +10921,7 @@ def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
   let summary = "Push an element onto the stack.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_StackRead,TF_StackWrite]>:$handle,
     TF_Tensor:$elem,
 
     DefaultValuedAttr<BoolAttr, "false">:$swap_memory
@@ -10930,7 +10945,7 @@ def TF_StackV2Op : TF_Op<"StackV2", []> {
   );
 
   let results = (outs
-    TF_ResourceTensor:$handle
+    Res<TF_ResourceTensor, "", [TF_StackAlloc]>:$handle
   );
 }
 
@@ -11604,6 +11619,29 @@ The above computation has a replicated output of two replicas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
+  let summary = [{
+Op that reshards on-device TPU variables to specified state. Internal use only.
+  }];
+
+  let description = [{
+The sharding state is represented as the key of the compilation that generated
+the sharding/unsharding programs along with the main program. new_format_key
+specifies the desired state, and format_state_var is the current state of the
+variables.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_ResourceTensor>, "", [TF_VariableRead,TF_VariableWrite]>:$vars,
+    TF_StrTensor:$new_format_key,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$format_state_var
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_TanOp : TF_Op<"Tan", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes tan of x element-wise.";
 
@@ -11684,7 +11722,7 @@ of a step/run.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayFree]>:$handle
   );
 
   let results = (outs);
@@ -11708,7 +11746,7 @@ All elements must have the same shape (excepting the first dimension).
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     F32Tensor:$flow_in,
 
     DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
@@ -11732,7 +11770,7 @@ All elements selected by `indices` must have the same shape.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     I32Tensor:$indices,
     F32Tensor:$flow_in,
 
@@ -11791,14 +11829,14 @@ calculation gets its own TensorArray accumulator.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     F32Tensor:$flow_in,
 
     StrAttr:$source
   );
 
   let results = (outs
-    TF_ResourceTensor:$grad_handle,
+    Res<TF_ResourceTensor, "", [TF_TensorArrayAlloc]>:$grad_handle,
     F32Tensor:$flow_out
   );
 }
@@ -11807,7 +11845,7 @@ def TF_TensorArrayReadV3Op : TF_Op<"TensorArrayReadV3", []> {
   let summary = "Read an element from the TensorArray into output `value`.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     I32Tensor:$index,
     F32Tensor:$flow_in
   );
@@ -11829,7 +11867,7 @@ Scatter the data from the input value into specific TensorArray elements.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     I32Tensor:$indices,
     TF_Tensor:$value,
     F32Tensor:$flow_in
@@ -11846,7 +11884,7 @@ def TF_TensorArraySizeV3Op : TF_Op<"TensorArraySizeV3", []> {
   let summary = "Get the current size of the TensorArray.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead]>:$handle,
     F32Tensor:$flow_in
   );
 
@@ -11881,7 +11919,7 @@ and having size
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     TF_Tensor:$value,
     I64Tensor:$lengths,
     F32Tensor:$flow_in
@@ -11913,7 +11951,7 @@ Write data via Write and read via Read or Pack.
   );
 
   let results = (outs
-    TF_ResourceTensor:$handle,
+    Res<TF_ResourceTensor, "", [TF_TensorArrayAlloc]>:$handle,
     F32Tensor:$flow
   );
 }
@@ -11922,7 +11960,7 @@ def TF_TensorArrayWriteV3Op : TF_Op<"TensorArrayWriteV3", []> {
   let summary = "Push an element onto the tensor_array.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_TensorArrayRead,TF_TensorArrayWrite]>:$handle,
     I32Tensor:$index,
     TF_Tensor:$value,
     F32Tensor:$flow_in
