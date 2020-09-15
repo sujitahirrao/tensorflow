@@ -1264,12 +1264,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32, TF_FloatRef, TF_SIntRef, TF_ComplexRef, TF_Uint8Ref, TF_Uint32Ref]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1492,46 +1492,6 @@ smaller than the range of the output (either `2^32` or `2^64`).
 
   TF_DerivedOperandTypeAttr shape_dtype = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<3>;
-}
-
-//===----------------------------------------------------------------------===//
-// Tensorflow ops that are implemented only in TFRT.
-//===----------------------------------------------------------------------===//
-
-def TF__JitFusedMatMulOp : TF_Op<"_JitFusedMatMul", [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = [{
-    MatMul operation with an output fusion compiled at runtime via MLIR codegen.
-  }];
-
-  let description = [{
-The inputs to the MatMul are specified by `a` and `b`. The series of operations
-that follows is specified by the `fusion` attribute, which is a list of output
-kernel names specified as strings (e.g. "BiasAdd"). They are performed in order,
-where the (first) input to each op is the output of the preceding op. The first
-input and the output of each fused_op must be of type T.
-
-Supported list of fusions is defined by ContractionOutputKernelBuilder
-implementations.
-
-*WARN*: This is a TFRT only operations, and it does not exist in TF. This
-operation is only added by the ContractionFusion pass.
-  }];
-
-  let arguments = (ins
-    TensorOf<[F32]>:$a,
-    TensorOf<[F32]>:$b,
-    Variadic<TensorOf<[F32]>>:$additional_args,
-
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$fusion
-  );
-
-  let results = (outs
-    TensorOf<[F32]>:$product
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 #endif // TF_OPS
