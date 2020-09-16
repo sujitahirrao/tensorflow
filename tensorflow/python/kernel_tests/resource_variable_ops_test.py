@@ -1571,6 +1571,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
   @test_util.run_v2_only
   def testUninitializedVariableMemoryUsage(self):
+    if test_util.is_gpu_available():
+      # TODO(allenl): Investigate possible GPU-specific memory leaks
+      self.skipTest("Disabled when a GPU is available")
     # TODO(kkb): Python memory checker complains continuous `weakref`
     # allocations, investigate.
     if memory_checker.CppMemoryChecker is None:

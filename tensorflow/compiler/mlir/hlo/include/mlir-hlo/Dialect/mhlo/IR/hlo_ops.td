@@ -27,7 +27,7 @@ include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "mhlo";
-  let cppNamespace = "mhlo";
+  let cppNamespace = "::mlir::mhlo";
 }
 
 class HLO_Op<string mnemonic, list<OpTrait> traits> :
@@ -265,7 +265,9 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
 
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
-    BASE_HLO_SqrtOp;
+    BASE_HLO_SqrtOp {
+  let hasFolder = 1;
+}
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [NoSideEffect, SameOperandsAndResultType],

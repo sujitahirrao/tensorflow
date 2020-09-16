@@ -5565,7 +5565,7 @@ tf_py_test(
     srcs = ["util/function_parameter_canonicalizer_test.py"],
     python_version = "PY3",
     tags = [
-        "no_windows",  # b/168523121
+        "no_pip",  # b/168621686
     ],
     tfrt_enabled = True,
     deps = [

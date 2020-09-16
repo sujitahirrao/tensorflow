@@ -7,7 +7,6 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
-load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
@@ -99,7 +98,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tensorrt_configure(name = "local_config_tensorrt")
     nccl_configure(name = "local_config_nccl")
     git_configure(name = "local_config_git")
-    sycl_configure(name = "local_config_sycl")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
     rocm_configure(name = "local_config_rocm")
@@ -164,11 +162,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "742eb377e0d304a0bfcb64fccfee2b3fe27932a2d5a95a22bfbc7a6fb4459e1a",
-        strip_prefix = "XNNPACK-0af63ab36b899559bd1a92bbc327f8137e53c15c",
+        sha256 = "4b199c96fb2d551450b48eb5549843b41c023ad200aa86760a7c56d0dc0da806",
+        strip_prefix = "XNNPACK-68447302abcfad0d4b6b19a1efe7d7eef8833f4a",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0af63ab36b899559bd1a92bbc327f8137e53c15c.zip",
-            "https://github.com/google/XNNPACK/archive/0af63ab36b899559bd1a92bbc327f8137e53c15c.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/68447302abcfad0d4b6b19a1efe7d7eef8833f4a.zip",
+            "https://github.com/google/XNNPACK/archive/68447302abcfad0d4b6b19a1efe7d7eef8833f4a.zip",
         ],
     )
 
@@ -714,8 +712,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "7841e21c98495ba5e33e0d2507d985bd5b938445"
-    LLVM_SHA256 = "372dfacb98f27b2a7f92a3aed22775b227a7761a853b34b2f626d3160622880c"
+    LLVM_COMMIT = "e1669843f2aaf1e4929afdd8f125c14536d27664"
+    LLVM_SHA256 = "03dd34e2d9e502f99aa7f5564b8c73d0d0dc67a8e794fb535c0ae1d223545627"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
