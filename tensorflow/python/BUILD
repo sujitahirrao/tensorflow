@@ -1975,7 +1975,7 @@ py_library(
     name = "composite_tensor",
     srcs = ["framework/composite_tensor.py"],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":tensor_util",
@@ -2050,7 +2050,7 @@ py_library(
     name = "type_spec",
     srcs = ["framework/type_spec.py"],
     srcs_version = "PY2AND3",
-    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":tensor_shape",
@@ -3181,6 +3181,10 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "stateless_random_ops_v2_gen",
 )
 
 tf_gen_op_wrapper_private_py(
@@ -4440,6 +4444,7 @@ py_library(
         ":framework_ops",
         ":math_ops",
         ":stateful_random_ops_gen",
+        ":stateless_random_ops_v2_gen",
         ":variables",
         "//third_party/py/numpy",
     ],
@@ -4474,6 +4479,7 @@ py_library(
         ":math_ops",
         ":random_ops",
         ":stateless_random_ops_gen",
+        ":stateless_random_ops_v2_gen",
     ],
 )
 
@@ -5246,7 +5252,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/math_ops_linspace_test.py"],
     python_version = "PY3",
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "notsan",  # b/168815578
+    ],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5599,7 +5608,6 @@ py_library(
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
-        "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
@@ -6045,6 +6053,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
@@ -7555,6 +7564,8 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/compiler/jit:flags_headers_only",
+        "//tensorflow/compiler/jit:get_compiler_ir_hdrs_only",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

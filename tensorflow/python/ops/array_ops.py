@@ -2472,7 +2472,6 @@ def matrix_diag(diagonal,
 @tf_export("linalg.diag_part", v1=["linalg.diag_part", "matrix_diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("matrix_diag_part")
-@dispatch.add_dispatch_support
 def matrix_diag_part(
     input,  # pylint:disable=redefined-builtin
     name="diag_part",
@@ -2614,7 +2613,6 @@ def matrix_diag_part(
     "linalg.tensor_diag_part", v1=["linalg.tensor_diag_part", "diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("diag_part")
-@dispatch.add_dispatch_support
 def tensor_diag_part(
     input,  # pylint:disable=redefined-builtin
     name=None):
@@ -4298,8 +4296,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
     # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
     matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
     result = row_vector < matrix
-
-    if dtype is None or result.dtype.base_dtype == dtype.base_dtype:
+    if dtype is None or result.dtype.is_compatible_with(dtype):
       return result
     else:
       return gen_math_ops.cast(result, dtype)
