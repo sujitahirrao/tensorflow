@@ -1,4 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+)
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -41,6 +45,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:transform_unranked_hlo",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -101,6 +106,36 @@ tf_cc_binary(
     ],
 )
 
+# We can test tf_to_gpu_binary by depending on the kernels that are generated
+# using it. This only tests that the headers containing the hex dump of the
+# generated GPU binaries are built successfully, but this is better than
+# nothing.
+# If this test fails, use the build flag --verbose_failures to see a full
+# command line of the failing build command, then copy the command line and run
+# it for further debugging.
+tf_cc_test(
+    name = "tf_to_gpu_binary_test",
+    srcs = [],
+    # Building the MLIR generated kernels requires hexdump on the ROCM
+    # platform, which might not be available.
+    tags = ["no_rocm"],
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_cuda_is_configured([
+        "//tensorflow/core/kernels/mlir_generated:abs_kernels",
+        "//tensorflow/core/kernels/mlir_generated:ceil_kernels",
+        "//tensorflow/core/kernels/mlir_generated:cos_kernels",
+        "//tensorflow/core/kernels/mlir_generated:exp_kernels",
+        "//tensorflow/core/kernels/mlir_generated:floor_kernels",
+        "//tensorflow/core/kernels/mlir_generated:log_kernels",
+        "//tensorflow/core/kernels/mlir_generated:neg_kernels",
+        "//tensorflow/core/kernels/mlir_generated:rsqrt_kernels",
+        "//tensorflow/core/kernels/mlir_generated:sqrt_kernels",
+        "//tensorflow/core/kernels/mlir_generated:tanh_kernels",
+    ]),
+)
+
 tf_cc_binary(
     name = "tf_to_kernel",
     srcs = ["tf_to_kernel.cc"],
@@ -128,7 +163,7 @@ tf_cc_binary(
 tf_cc_binary(
     name = "kernel-gen-opt",
     srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
-    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
+    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__subpackages__"],
     deps = [
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
