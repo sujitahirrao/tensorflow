@@ -2,11 +2,11 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_profiler_client_deps",
     "tf_protos_profiler_service",
 )
 
@@ -18,26 +18,29 @@ cc_library(
     name = "capture_profile",
     srcs = ["capture_profile.cc"],
     hdrs = ["capture_profile.h"],
+    copts = tf_profiler_copts(),
+    features = ["-layering_check"],
     visibility = [
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
+        ":profiler_client_headers",
         ":save_profile",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core:lib_internal",
-    ] + tf_profiler_client_deps(),
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
     name = "save_profile",
     srcs = ["save_profile.cc"],
     hdrs = ["save_profile.h"],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:framework",
@@ -50,10 +53,33 @@ cc_library(
     ],
 )
 
+tf_pybind_cc_library_wrapper(
+    name = "profiler_client_headers",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
+    deps = [":profiler_client"],
+)
+
+cc_library(
+    name = "profiler_client",
+    hdrs = ["profiler_client.h"],
+    deps = [
+        ":profiler_client_impl",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+# Linked to pywrap_tensorflow to avoid ODR violation due to tf_grpc_cc_dependency().
 cc_library(
     name = "profiler_client_impl",
-    srcs = ["profiler_client.cc"],
-    hdrs = ["profiler_client.h"],
+    srcs = [
+        "profiler_client.cc",
+        "profiler_client.h",
+    ],
+    copts = tf_profiler_copts(),
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
@@ -66,12 +92,6 @@ cc_library(
         tf_grpc_cc_dependency(),
     ],
     alwayslink = True,
-)
-
-tf_pybind_cc_library_wrapper(
-    name = "profiler_client_headers",
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [":profiler_client_impl"],
 )
 
 cc_library(
@@ -93,9 +113,10 @@ cc_library(
 tf_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
+    features = ["-layering_check"],
     tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
-        ":profiler_client_impl",
+        ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
         "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
@@ -109,9 +130,11 @@ cc_library(
     name = "remote_profiler_session_manager",
     srcs = ["remote_profiler_session_manager.cc"],
     hdrs = ["remote_profiler_session_manager.h"],
+    copts = tf_profiler_copts(),
+    features = ["-layering_check"],
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        ":profiler_client_impl",
+        ":profiler_client_headers",
         ":save_profile",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -127,8 +150,10 @@ cc_library(
 tf_cc_test(
     name = "remote_profiler_session_manager_test",
     srcs = ["remote_profiler_session_manager_test.cc"],
+    features = ["-layering_check"],
     tags = ["external"],  # So that test suite reruns unconditionally.
     deps = [
+        ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
         ":remote_profiler_session_manager",
         "@com_google_absl//absl/time",
