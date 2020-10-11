@@ -523,20 +523,6 @@ tf_cuda_library(
     ],
 )
 
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "allocator",
-    actual = "//tensorflow/core/framework:allocator",
-    visibility = ["//visibility:public"],
-)
-
-# TODO(gonnet): Remove this alias once all users have been moved to the actual target.
-alias(
-    name = "allocator_registry_impl",
-    actual = "//tensorflow/core/framework:allocator_registry_impl",
-    visibility = ["//visibility:public"],
-)
-
 alias(
     name = "overflow",
     actual = "//tensorflow/core/util:overflow",
@@ -1730,6 +1716,7 @@ cc_library(
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
@@ -2070,6 +2057,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
