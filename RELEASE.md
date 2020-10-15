@@ -138,6 +138,7 @@
         stateful ops.
     *   Added `tf.config.experimental.get_memory_usage` to return total memory
         usage of the device.
+    * Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
 *   `tf.data`:
     *   tf.data service:
     *   Added new `tf.data.experimental.service.register_dataset` and
@@ -224,6 +225,9 @@
         argument.
     *   Added `tf.metrics.log_cosh` and `tf.metrics.logcosh` API entrypoints
         with the same implementation as their `tf.losses` equivalent.
+    *   For Keras model, the individual call of `Model.evaluate` uses no cached
+        data for evaluation, while `Model.fit` uses cached data when
+        `validation_data` arg is provided for better performance.
 *   `tf.function` / AutoGraph:
     *   Added `experimental_follow_type_hints` argument for `tf.function`. When
         True, the function may use type annotations to optimize the tracing

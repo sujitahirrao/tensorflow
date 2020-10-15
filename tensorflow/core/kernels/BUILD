@@ -464,8 +464,8 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:tensor_testutil",
     ],
 )
 
@@ -1419,10 +1419,22 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "ragged_tensor_variant",
+    srcs = ["ragged_tensor_variant.cc"],
+    hdrs = ["ragged_tensor_variant.h"],
+    deps = [
+        ":cwise_op",
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_kernel_library(
     name = "ragged_tensor_to_variant_op",
     srcs = ["ragged_tensor_to_variant_op.cc"],
     deps = [
+        ":concat_lib",
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1432,6 +1444,7 @@ tf_kernel_library(
     name = "ragged_tensor_from_variant_op",
     srcs = ["ragged_tensor_from_variant_op.cc"],
     deps = [
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1444,6 +1457,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ragged_tensor_to_variant_op",
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1460,6 +1474,7 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ragged_tensor_from_variant_op",
+        ":ragged_tensor_variant",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -2230,9 +2245,9 @@ tf_cc_test(
     deps = [
         ":transpose_functor",
         "//tensorflow/core:framework",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
     ],
 )
 
@@ -6640,7 +6655,7 @@ tf_cc_binary(
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:client_session",
             "//tensorflow/core:framework",
-            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core/framework:tensor_testutil",
         ],
     }),
 )
@@ -6697,7 +6712,7 @@ cc_binary(
             ":quantized_ops",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core/framework:tensor_testutil",
             "//tensorflow/core:tensorflow",
             "//tensorflow/core:test",
         ],
@@ -6902,7 +6917,7 @@ cc_binary(
             ":ops_util",
             ":quantized_ops",
             "//tensorflow/core:framework",
-            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core/framework:tensor_testutil",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:test",
         ],
@@ -7042,7 +7057,7 @@ cc_binary(
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
-            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core/framework:tensor_testutil",
         ],
     }),
 )
