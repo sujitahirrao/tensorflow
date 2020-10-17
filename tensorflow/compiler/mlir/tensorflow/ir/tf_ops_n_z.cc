@@ -1930,6 +1930,19 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
 }
 
 //===----------------------------------------------------------------------===//
+// SummaryWriterOp
+//===----------------------------------------------------------------------===//
+
+ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
+    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
+    int64_t &next_id) {
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         writer(), resource_handle_id_map,
+                                         next_id);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2337,6 +2350,41 @@ void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// FusedBatchNormOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
+  using OpRewritePattern<FusedBatchNormOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
+                                PatternRewriter &rewriter) const override {
+    auto new_result_types =
+        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
+    // reserve_space_3
+    new_result_types.push_back(
+        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
+
+    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
+                             TF::FusedBatchNormV3Op::getOperationName(),
+                             tf_fused_batch_norm_op.getOperands(),
+                             new_result_types,
+                             tf_fused_batch_norm_op.getAttrs());
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+
+    rewriter.replaceOp(tf_fused_batch_norm_op,
+                       tf_fused_batch_norm_op_v3->getResults().drop_back());
+    return success();
+  }
+};
+}  // namespace.
+
+void FusedBatchNormOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertFusedBatchNorm>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // UnpackOp
 //===----------------------------------------------------------------------===//
 
@@ -2410,18 +2458,10 @@ static LogicalResult VerifyUnsortedSegmentReduction(Op op) {
 ResourceHandleValueAndId VarHandleOp::GetResourceHandleValueAndId(
     llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
     int64_t &next_id) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(shared_name())) return {resource(), next_id++};
-
-  llvm::StringRef device;
-  if (auto device_attr = getAttrOfType<StringAttr>("device"))
-    device = device_attr.getValue();
-
-  ResourceHandle handle(container(), shared_name(), device, /*op=*/nullptr);
-  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++next_id;
-  return {resource(), emplace_res.first->second};
+  llvm::StringRef device = GetDeviceOrEmpty(getOperation());
+  return GetResourceHandleValueAndIdBase(container(), shared_name(), device,
+                                         resource(), resource_handle_id_map,
+                                         next_id);
 }
 
 //===----------------------------------------------------------------------===//

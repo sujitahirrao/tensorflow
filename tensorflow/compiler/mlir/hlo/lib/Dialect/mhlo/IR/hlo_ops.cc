@@ -63,8 +63,6 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_structs.cc.inc"
-
 namespace mlir {
 namespace mhlo {
 
@@ -1054,6 +1052,9 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     inferredReturnTypes.push_back(UnrankedTensorType::get(out_element));
     return success();
   }
+
+  if (first_type.getRank() == 0)
+    return emitOptionalError(location, "rank-0 values cannot be concatenated");
 
   auto out_shape = llvm::to_vector<6>(first_type.getShape());
 
