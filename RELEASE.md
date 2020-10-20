@@ -162,7 +162,8 @@
         stateful ops.
     *   Added `tf.config.experimental.get_memory_usage` to return total memory
         usage of the device.
-    * Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
+    *   Added gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
+    *   Improve shape inference of nested function calls by supporting constant folding across Arg nodes which makes more static values available to shape inference functions.
 *   `tf.data`:
     *   tf.data service:
     *   Added new `tf.data.experimental.service.register_dataset` and
@@ -297,6 +298,7 @@
                 `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
     *   `DynamicBuffer::AddJoinedString()` will now add a separator if the first
         string to be joined is empty.
+    *  Added support for cumulative sum (cumsum), both as builtin op and MLIR conversion.
     *   <ADD RELEASE NOTES HERE>
 
 *   `tf.random`:
