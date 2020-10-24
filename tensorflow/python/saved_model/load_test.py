@@ -50,11 +50,10 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
@@ -405,7 +404,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                             dtype=dtypes.int32).numpy())
 
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-    self.assertEqual(4, len(concrete_functions))
+    self.assertLen(concrete_functions, 4)
 
     imported = cycle(root, cycles)
 
@@ -421,6 +420,28 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(
                             constant_op.constant([1.0, 2.0, 3.0]),
                             dtype=dtypes.int32).numpy())
+
+  def test_function_with_str_bytes_input(self, cycles):
+
+    @def_function.function
+    def func(x, y):
+      return string_ops.string_join([x, y])
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(b"ab", root.f("a", "b"))
+    self.assertAllEqual(b"ab", root.f("a", constant_op.constant("b")))
+    self.assertAllEqual(b"ab", root.f(constant_op.constant("a"), "b"))
+
+    concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    self.assertLen(concrete_functions, 3)
+
+    imported = cycle(root, cycles)
+
+    self.assertAllEqual(b"ab", imported.f("a", "b"))
+    self.assertAllEqual(b"ab", imported.f("a", constant_op.constant("b")))
+    self.assertAllEqual(b"ab", imported.f(constant_op.constant("a"), "b"))
 
   def test_function_no_return(self, cycles):
 
@@ -892,7 +913,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-    self.assertEqual(1, len(concrete_functions))
+    self.assertLen(concrete_functions, 1)
 
     imported = cycle(root, cycles)
 
@@ -1177,7 +1198,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1., imported.variables[0].numpy())
     self.assertEqual(3., imported.variables[2].numpy())
     self.assertIs(None, imported.variables[1])
-    self.assertEqual(3, len(imported.variables))
+    self.assertLen(imported.variables, 3)
 
   def test_tuple(self, cycles):
     root = tracking.AutoTrackable()
@@ -1887,34 +1908,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
 
-  def test_saving_ndarray_specs(self, cycles):
-    class NdarrayModule(module.Module):
-
-      @def_function.function
-      def plain(self, x):
-        return tnp.add(x, 1)
-
-      @def_function.function(input_signature=[
-          np_arrays.NdarraySpec(tensor_spec.TensorSpec([], dtypes.float32))])
-      def with_signature(self, x):
-        return tnp.add(x, 1)
-
-    m = NdarrayModule()
-    c = tnp.asarray(3.0, tnp.float32)
-    output_plain, output_with_signature = m.plain(c), m.with_signature(c)
-
-    loaded_m = cycle(m, cycles)
-
-    load_output_plain, load_output_with_signature = (
-        loaded_m.plain(c), loaded_m.with_signature(c))
-
-    self.assertIsInstance(output_plain, tnp.ndarray)
-    self.assertIsInstance(load_output_plain, tnp.ndarray)
-    self.assertIsInstance(output_with_signature, tnp.ndarray)
-    self.assertIsInstance(load_output_with_signature, tnp.ndarray)
-    self.assertAllClose(output_plain, load_output_plain)
-    self.assertAllClose(output_with_signature, load_output_with_signature)
-
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2070,14 +2063,10 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       loaded = cycle(root, 1)
 
     expected_save_message = (
-        "WARNING:absl:No concrete functions found for untraced function `foo` "
-        "while saving. This function will not be callable after loading.")
-    expected_load_message = (
-        "WARNING:absl:Could not find any concrete functions to restore for "
-        "this SavedFunction object while loading. The function will not be "
-        "callable.")
+        "WARNING:absl:Found untraced functions such as foo while saving "
+        "(showing 1 of 1). These functions will not be directly callable after "
+        "loading.")
     self.assertIn(expected_save_message, logs.output)
-    self.assertIn(expected_load_message, logs.output)
 
     with self.assertRaisesRegex(
         ValueError, "Found zero restored functions for caller function."):
