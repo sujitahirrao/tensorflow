@@ -686,8 +686,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "756f5978410809530150f5e1cd425e85ad94d1cd"
-    LLVM_SHA256 = "16a7a4014acdf44fb737b0c9430b82a6a3d0bb10dccb15ce8dbb0b328347fc14"
+    LLVM_COMMIT = "76313288cd7dcd583e1f074f7165ebd54a930b93"
+    LLVM_SHA256 = "6a672d915859009274a7bd38da6cbf6f40884066e781c0c9d95ce6a8d65e38c5"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -702,7 +702,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "//third_party/mlir:BUILD": "mlir/BUILD",
             "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
         },
-        patch_file = clean_dep("//third_party:mlir_fix_gcc7_ice.patch"),
     )
 
     # Intel openMP that is part of LLVM sources.
