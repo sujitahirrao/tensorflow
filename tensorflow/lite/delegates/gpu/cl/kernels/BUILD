@@ -255,6 +255,7 @@ cc_library(
     hdrs = ["converter.h"],
     deps = [
         ":util",
+        ":work_group_picking",
         "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
@@ -274,6 +275,7 @@ cc_library(
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],
     deps = [
+        ":conv_common",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
