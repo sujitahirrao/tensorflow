@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
-#if !defined(__CUDACC__)
+namespace tensorflow {
 
-// TODO(frankchn): Resolve compilation errors when building absl::Cord with CUDA
-#include "absl/strings/cord.h"
-#define TF_CORD_SUPPORT 1
+GENERATE_UNARY_KERNEL(LogicalNot, i1, DT_BOOL, bool);
+// LogicalNot does not have a "T" attribute because it only works with type
+// bool. So we need to register it without TypeConstraint<bool>("T").
+REGISTER_KERNEL_NO_TYPE_CONSTRAINT(LogicalNot, i1);
 
-#endif  // __CUDACC__
-
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
+}  // namespace tensorflow
