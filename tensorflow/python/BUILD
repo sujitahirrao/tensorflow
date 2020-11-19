@@ -2180,22 +2180,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "composite_tensor_utils",
-    srcs = ["framework/composite_tensor_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_concat_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
@@ -2209,24 +2193,6 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
-    ],
-)
-
-tf_py_test(
-    name = "framework_composite_tensor_utils_test",
-    srcs = ["framework/composite_tensor_utils_test.py"],
-    main = "framework/composite_tensor_utils_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":composite_tensor",
-        ":composite_tensor_utils",
-        ":framework_test_lib",
-        ":sparse_ops",
-        ":sparse_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/ops/ragged:ragged_tensor_value",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -7281,6 +7247,7 @@ cuda_py_test(
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
+        "no_windows",  # b/173520599
         "notap",  # TODO(b/135924227): Re-enable after fixing flakiness.
     ],
     # This test will not run on XLA because it primarily tests the TF Classic flow.

@@ -604,29 +604,6 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
-def TF_AssignOp : TF_Op<"Assign", [NoSideEffect]> {
-  let summary = "Update 'ref' by assigning 'value' to it.";
-
-  let description = [{
-This operation outputs "ref" after the assignment is done.
-This makes it easier to chain operations that need to use the reset value.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$ref,
-    TF_Tensor:$value,
-
-    DefaultValuedAttr<BoolAttr, "true">:$validate_shape,
-    DefaultValuedAttr<BoolAttr, "true">:$use_locking
-  );
-
-  let results = (outs
-    TF_Tensor:$output_ref
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
   let summary = "Adds a value to the current value of a variable.";
 
@@ -2934,6 +2911,67 @@ Converts the given variant tensor to an iterator and stores it in the given reso
   );
 
   let results = (outs);
+}
+
+def TF_DeserializeSparseOp : TF_Op<"DeserializeSparse", [NoSideEffect]> {
+  let summary = "Deserialize `SparseTensor` objects.";
+
+  let description = [{
+The input `serialized_sparse` must have the shape `[?, ?, ..., ?, 3]` where
+the last dimension stores serialized `SparseTensor` objects and the other N
+dimensions (N >= 0) correspond to a batch. The ranks of the original
+`SparseTensor` objects must all match. When the final `SparseTensor` is
+created, its rank is the rank of the incoming `SparseTensor` objects plus N;
+the sparse tensors have been concatenated along new dimensions, one for each
+batch.
+
+The output `SparseTensor` object's shape values for the original dimensions
+are the max across the input `SparseTensor` objects' shape values for the
+corresponding dimensions. The new dimensions match the size of the batch.
+
+The input `SparseTensor` objects' indices are assumed ordered in
+standard lexicographic order.  If this is not the case, after this
+step run `SparseReorder` to restore index ordering.
+
+For example, if the serialized input is a `[2 x 3]` matrix representing two
+original `SparseTensor` objects:
+
+    index = [ 0]
+            [10]
+            [20]
+    values = [1, 2, 3]
+    shape = [50]
+
+and
+
+    index = [ 2]
+            [10]
+    values = [4, 5]
+    shape = [30]
+
+then the final deserialized `SparseTensor` will be:
+
+    index = [0  0]
+            [0 10]
+            [0 20]
+            [1  2]
+            [1 10]
+    values = [1, 2, 3, 4, 5]
+    shape = [2 50]
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Str, TF_Variant]>:$serialized_sparse
+  );
+
+  let results = (outs
+    TF_Int64Tensor:$sparse_indices,
+    TF_Tensor:$sparse_values,
+    TF_Int64Tensor:$sparse_shape
+  );
+
+  TF_DerivedOperandTypeAttr Tserialized = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<1>;
 }
 
 def TF_DestroyResourceOp : TF_Op<"DestroyResourceOp", []> {
@@ -6523,6 +6561,8 @@ tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MatrixSetDiagV2Op : TF_Op<"MatrixSetDiagV2", [NoSideEffect]> {
@@ -6615,6 +6655,8 @@ tf.matrix_set_diag(diagonals, k = (-1, 0))
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MatrixSetDiagV3Op : TF_Op<"MatrixSetDiagV3", [NoSideEffect]> {
