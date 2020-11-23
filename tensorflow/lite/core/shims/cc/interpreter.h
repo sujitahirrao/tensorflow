@@ -12,26 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_CORE_SHIMS_CC_INTERPRETER_H_
+#define TENSORFLOW_LITE_CORE_SHIMS_CC_INTERPRETER_H_
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_COMMON_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_COMMON_H_
+/// For documentation, see third_party/tensorflow/lite/interpreter.h.
 
-namespace tflite {
-namespace gpu {
-namespace cl {
+#include "tensorflow/lite/interpreter.h"
 
-enum class ConvWeightsLayout {
-  kUnknown,
-  kOHWIOGroupI4O4,
-};
+namespace tflite_shims {
+using Interpreter = ::tflite::Interpreter;
+}  // namespace tflite_shims
 
-struct ConvWeightsDescription {
-  ConvWeightsLayout layout;
-  int output_group_size;
-};
-
-}  // namespace cl
-}  // namespace gpu
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_COMMON_H_
+#endif  // TENSORFLOW_LITE_CORE_SHIMS_CC_INTERPRETER_H_
