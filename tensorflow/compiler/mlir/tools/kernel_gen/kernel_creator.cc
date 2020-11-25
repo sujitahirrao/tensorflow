@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -161,6 +162,9 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // deallocs.
   pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+  // Expand memref_reshape to its ranked form so that we can propagate
+  // scalars and avoid allocation.
+  pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -197,10 +201,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
-  if (embed_memref_prints) {
-    pm.addNestedPass<::mlir::FuncOp>(
-        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
-  }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   // TODO(herhut): Remove this pass once the LowerToCFG pass can handle it.
   pm.addNestedPass<mlir::FuncOp>(
@@ -208,6 +208,10 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(::mlir::createLowerToCFGPass());
   // Map allocs, asserts, etc. to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
+  if (embed_memref_prints) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+  }
   if (failed(pm.run(module))) {
     return InternalError("Lowering to GPU kernels failed.");
   }
