@@ -30,11 +30,9 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor SpaceToDepth(int id, ValueId input_id, ValueId output_id,
+ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
                                    const SpaceToDepthAttributes& attr) {
-  ComputeTaskDescriptor desc;
-  desc.id = id;
-  desc.is_linkable = false;
+  ComputeTaskDescriptor desc(definition);
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -59,32 +57,30 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
     uint src_y = gid.y * block_size + block_id / block_size;
     uint src_c = dst_c % src_size.z;
     value[i] =
-        src_buffer[src_x + src_size.x * (src_y + src_size.y * (src_c / 4))]
+        src_tensor[src_x + src_size.x * (src_y + src_size.y * (src_c / 4))]
                   [src_c % 4];
   }
   $2
-  dst_buffer[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
+  dst_tensor[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
 })";
 
-  desc.input_buffers = {{input_id, "device FLT4* const src_buffer"}};
-
-  desc.output_buffer = {output_id, "device FLT4* dst_buffer"};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const BHWC& input_shape = buffers.find(input_id)->second;
-         const BHWC& output_shape = buffers.find(output_id)->second;
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          const std::vector<int> uniform_params = {
              // src_size
-             input_shape.w,
-             input_shape.h,
-             input_shape.c,
+             src_shapes[0].w,
+             src_shapes[0].h,
+             src_shapes[0].c,
              0,
              // dst_size
-             output_shape.w,
-             output_shape.h,
-             output_shape.c,
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             dst_shapes[0].c,
              0,
              // block_size
              attr.block_size,
@@ -97,15 +93,10 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
   };
 
   desc.resize_function =
-      [input_id, attr](
-          const std::map<ValueId, BHWC>& buffers) -> std::pair<uint3, uint3> {
-    const BHWC& input_shape = buffers.find(input_id)->second;
-    const BHWC output_shape(input_shape.b,  //
-                            input_shape.h / attr.block_size,
-                            input_shape.w / attr.block_size,
-                            input_shape.c * attr.block_size * attr.block_size);
-    const uint3 grid =
-        uint3(output_shape.w, output_shape.h, DivideRoundUp(output_shape.c, 4));
+      [attr](const std::vector<BHWC>& src_shapes,
+             const std::vector<BHWC>& dst_shapes) -> std::pair<uint3, uint3> {
+    const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
+                             DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
     const int groups_x = DivideRoundUp(grid.x, groups_size.x);
     const int groups_y = DivideRoundUp(grid.y, groups_size.y);

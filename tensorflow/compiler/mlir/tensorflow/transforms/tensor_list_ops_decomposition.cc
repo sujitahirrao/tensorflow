@@ -22,8 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -540,7 +539,9 @@ LogicalResult GetConstShapeValue(Value shape_value,
   auto shape_const_op = llvm::dyn_cast<TF::ConstOp>(shape_op);
   if (!shape_const_op) return failure();
   for (const auto& v : shape_const_op.value().getValues<APInt>()) {
-    shape->push_back(v.getSExtValue());
+    int64_t dim_size = v.getSExtValue();
+    if (dim_size == ShapedType::kDynamicSize) return failure();
+    shape->push_back(dim_size);
   }
   return success();
 }

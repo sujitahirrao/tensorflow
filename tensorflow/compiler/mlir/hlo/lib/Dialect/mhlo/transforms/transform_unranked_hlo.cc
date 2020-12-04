@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -409,7 +409,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    constexpr int kMaxRankSpecialization = 6;
+    constexpr int kMaxRankSpecialization = 5;
     for (int i = 2; i < kMaxRankSpecialization; i++) {
       auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
           else_builder, op, greater_rank, i);

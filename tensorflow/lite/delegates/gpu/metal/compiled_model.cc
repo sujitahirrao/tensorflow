@@ -89,38 +89,20 @@ bool Contains(const std::vector<ValueId>& wide,
   return true;
 }
 
-// Checks if all elements of the narrow vector exist in the wide vector. Vectors
-// are expected to be unsorted.
-bool Contains(
-    const std::vector<ValueId>& wide,
-    const std::vector<ComputeTaskDescriptor::InputBufferDescriptor>& buffers) {
-  if (buffers.empty() || buffers.size() > wide.size()) {
-    return false;
-  }
-  std::set<ValueId> wide_sorted(wide.begin(), wide.end());
-  for (const auto& buffer : buffers) {
-    if (!std::binary_search(wide_sorted.begin(), wide_sorted.end(),
-                            buffer.id)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 uint32_t BufferUseCount(ValueId id,
                         const std::list<NodeDescriptor>& descriptors,
                         std::list<FusionSequence>* chains) {
   uint32_t use_count = 0;
   // Buffer may be read by both processed and not processed operations.
   for (auto& desc : descriptors) {
-    if (Contains(desc.task->input_buffers, id)) {
+    if (Contains(desc.src_tensors_ids, id)) {
       use_count++;
     }
   }
 
   for (auto& chain : *chains) {
     for (auto& desc : chain) {
-      if (Contains(desc.task->input_buffers, id)) {
+      if (Contains(desc.src_tensors_ids, id)) {
         use_count++;
       }
     }
@@ -137,8 +119,8 @@ bool CanFuseOperations(const NodeDescriptor& first,
                        const std::list<NodeDescriptor>& descriptors,
                        std::list<FusionSequence>* chains) {
   return second.task->is_linkable &&
-         !Contains(output_ids, first.task->output_buffer.id) &&
-         BufferUseCount(first.task->output_buffer.id, descriptors, chains) == 1;
+         !Contains(output_ids, first.dst_tensors_ids[0]) &&
+         BufferUseCount(first.dst_tensors_ids[0], descriptors, chains) == 1;
 }
 
 // Takes an unsorted list of task descriptors, builds a list of chains. Each
@@ -152,11 +134,11 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
   // Proxy tasks for inputs - only output is valid on this elements.
   for (auto input_id : input_ids) {
     auto desc = std::make_shared<ComputeTaskDescriptor>();
-    desc->id = 0;
     desc->is_linkable = true;
-    desc->output_buffer = {input_id};
+    desc->AddDstTensor("", {});
     NodeDescriptor node;
     node.task = desc;
+    node.dst_tensors_ids = {input_id};
     chains->push_back({node});
   }
 
@@ -173,22 +155,22 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
       std::vector<ValueId> ready_buffer_ids;
       ready_buffer_ids.reserve(chains->size());
       for (const auto& chain : *chains) {
-        ready_buffer_ids.push_back(chain.back().task->output_buffer.id);
+        ready_buffer_ids.push_back(chain.back().dst_tensors_ids[0]);
       }
 
       // Check if all inputs of this operation are ready.
-      if (Contains(ready_buffer_ids, task_descriptor.task->input_buffers)) {
+      if (Contains(ready_buffer_ids, task_descriptor.src_tensors_ids)) {
         // Now find a chain to fuse with.
         bool fused = false;
         for (auto& chain : *chains) {
           // We can fuse only single output for now.
           bool can_link = false;
           if (task_descriptor.task->is_associative_op) {
-            can_link = Contains(task_descriptor.task->input_buffers,
-                                chain.back().task->output_buffer.id);
+            can_link = Contains(task_descriptor.src_tensors_ids,
+                                chain.back().dst_tensors_ids[0]);
           } else {
-            can_link = task_descriptor.task->input_buffers[0].id ==
-                       chain.back().task->output_buffer.id;
+            can_link = task_descriptor.src_tensors_ids[0] ==
+                       chain.back().dst_tensors_ids[0];
           }
           if (can_link && CanFuseOperations(chain.back(), task_descriptor,
                                             output_ids, *descriptors, chains)) {
@@ -213,7 +195,7 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
 
   unused_ids->reserve(descriptors->size());
   for (const auto& desc : *descriptors) {
-    unused_ids->push_back(desc.task->id);
+    unused_ids->push_back(desc.id);
   }
 }
 
@@ -230,7 +212,7 @@ std::list<FusionSequence> SortChains(
     ready_buffer_ids.insert(ready_buffer_ids.begin(), graph_input_ids.begin(),
                             graph_input_ids.end());
     for (auto& chain : sorted_chains) {
-      ready_buffer_ids.push_back(chain.back().task->output_buffer.id);
+      ready_buffer_ids.push_back(chain.back().dst_tensors_ids[0]);
     }
 
     for (auto it = chains->begin(); it != chains->end();) {
@@ -241,15 +223,15 @@ std::list<FusionSequence> SortChains(
       std::vector<ValueId> elements_output_buffer_ids;
       elements_output_buffer_ids.reserve(chain.size());
       for (const auto& element : chain) {
-        elements_output_buffer_ids.push_back(element.task->output_buffer.id);
+        elements_output_buffer_ids.push_back(element.dst_tensors_ids[0]);
       }
 
       // Collect all inputs also for linked operations.
       std::vector<ValueId> elements_input_buffer_ids;
       for (const auto& element : chain) {
-        for (const auto& buffer : element.task->input_buffers) {
-          if (!Contains(elements_output_buffer_ids, buffer.id)) {
-            elements_input_buffer_ids.push_back(buffer.id);
+        for (const auto& id : element.src_tensors_ids) {
+          if (!Contains(elements_output_buffer_ids, id)) {
+            elements_input_buffer_ids.push_back(id);
           }
         }
       }
@@ -276,9 +258,9 @@ std::vector<ValueId> GetUsedInputBufferIds(
   output_and_intermediate_ids.reserve(sorted_chains.size());
   std::set<ValueId> input_and_intermediate_ids;
   for (auto it = sorted_chains.begin(); it != sorted_chains.end(); ++it) {
-    output_and_intermediate_ids.push_back(it->back().task->output_buffer.id);
-    for (const auto& buffer : it->front().task->input_buffers) {
-      input_and_intermediate_ids.insert(buffer.id);
+    output_and_intermediate_ids.push_back(it->back().dst_tensors_ids[0]);
+    for (const auto& id : it->front().src_tensors_ids) {
+      input_and_intermediate_ids.insert(id);
     }
   }
   std::vector<ValueId> input_ids;
@@ -300,7 +282,7 @@ std::vector<ValueId> GetMissingOutputBufferIds(
   std::vector<ValueId> output_and_intermediate_ids;
   output_and_intermediate_ids.reserve(sorted_chains.size());
   for (auto it = sorted_chains.begin(); it != sorted_chains.end(); ++it) {
-    output_and_intermediate_ids.push_back(it->back().task->output_buffer.id);
+    output_and_intermediate_ids.push_back(it->back().dst_tensors_ids[0]);
   }
   std::vector<ValueId> missing_output_ids;
   for (ValueId id : output_ids) {
@@ -324,19 +306,19 @@ std::vector<ValueId> DeductOutputBufferIds(
       if (it1 != it2) {
         std::vector<ValueId> input_ids;
         for (const auto& element : *it2) {
-          for (const auto& buffer : element.task->input_buffers) {
-            input_ids.push_back(buffer.id);
+          for (const auto& id : element.src_tensors_ids) {
+            input_ids.push_back(id);
           }
         }
-        if (Contains(input_ids, it1->back().task->output_buffer.id)) {
+        if (Contains(input_ids, it1->back().dst_tensors_ids[0])) {
           found_as_input = true;
           break;
         }
       }
     }
     if (!found_as_input) {
-      if (!Contains(output_ids, it1->back().task->output_buffer.id)) {
-        extra_output_ids.push_back(it1->back().task->output_buffer.id);
+      if (!Contains(output_ids, it1->back().dst_tensors_ids[0])) {
+        extra_output_ids.push_back(it1->back().dst_tensors_ids[0]);
       }
     }
   }
@@ -351,7 +333,7 @@ std::vector<int> DeleteUnusedTasks(const std::vector<ValueId>& output_ids,
   std::vector<int> unused_operations;
   for (auto it1 = chains->rbegin(); it1 != chains->rend();) {
     // Don't delete if output is requested.
-    if (Contains(output_ids, it1->back().task->output_buffer.id)) {
+    if (Contains(output_ids, it1->back().dst_tensors_ids[0])) {
       ++it1;
       continue;
     }
@@ -361,11 +343,11 @@ std::vector<int> DeleteUnusedTasks(const std::vector<ValueId>& output_ids,
     for (auto it2 = chains->rbegin(); it2 != chains->rend(); ++it2) {
       std::vector<ValueId> input_ids;
       for (const auto& element : *it2) {
-        for (const auto& buffer : element.task->input_buffers) {
-          input_ids.push_back(buffer.id);
+        for (const auto& id : element.src_tensors_ids) {
+          input_ids.push_back(id);
         }
       }
-      if (Contains(input_ids, it1->back().task->output_buffer.id)) {
+      if (Contains(input_ids, it1->back().dst_tensors_ids[0])) {
         output_used = true;
         break;
       }
@@ -375,7 +357,7 @@ std::vector<int> DeleteUnusedTasks(const std::vector<ValueId>& output_ids,
       continue;
     }
     // Delete if not used.
-    unused_operations.push_back(it1->back().task->id);
+    unused_operations.push_back(it1->back().id);
     it1 = decltype(it1){chains->erase(std::next(it1).base())};
   }
   return unused_operations;
@@ -387,7 +369,7 @@ void RemoveInputProxies(std::list<FusionSequence>* chains) {
   for (auto it = chains->begin(); it != chains->end();) {
     auto& chain = *it;
     // Remove input proxy-operations.
-    if (chain.front().task->input_buffers.empty()) {
+    if (chain.front().src_tensors_ids.empty()) {
       chain.erase(chain.begin());
     }
     if (chain.empty()) {
@@ -403,7 +385,6 @@ void RemoveInputProxies(std::list<FusionSequence>* chains) {
 NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
                                ValueId output_id) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = operation_id;
   desc->is_linkable = false;
   desc->shader_source = R"(
     #include <metal_stdlib>
@@ -416,51 +397,50 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
         return;
       }
       const int linear_index = (gid.z * size.y + gid.y) * size.x + gid.x;
-      FLT4 value = input_buffer[linear_index];
+      FLT4 value = src_tensor[linear_index];
       $2
-      output_buffer[linear_index] = value;
+      dst_tensor[linear_index] = value;
     }
   )";
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const input_buffer"},
-  };
-
-  desc->output_buffer = {output_id, "device FLT4* output_buffer"};
+  desc->AddSrcTensor("src_tensor", {});
+  desc->AddDstTensor("dst_tensor", {});
 
   desc->uniform_buffers = {
       {"constant int2& size",
-       [input_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         return GetByteBuffer(std::vector<int>{dimension.w, dimension.h});
+       [](const std::vector<BHWC>& src_shapes,
+          const std::vector<BHWC>& dst_shapes) {
+         return GetByteBuffer(
+             std::vector<int>{src_shapes[0].w, src_shapes[0].h});
        }},
   };
 
-  desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dimension = buffers.find(input_id)->second;
+  desc->resize_function = [](const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes) {
     uint3 groups_size{16, 16, 1};
-    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
-                       DivideRoundUp(dimension.h, groups_size.y),
-                       DivideRoundUp(dimension.c, 4)};
+    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
+                       DivideRoundUp(dst_shapes[0].h, groups_size.y),
+                       DivideRoundUp(dst_shapes[0].c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 
   NodeDescriptor node_desc;
   node_desc.task = desc;
+  node_desc.id = operation_id;
+  node_desc.src_tensors_ids = {input_id};
+  node_desc.dst_tensors_ids = {output_id};
   return node_desc;
 }
 
 NodeDescriptor FuseChain(const FusionSequence& chain) {
+  NodeDescriptor node_desc;
   auto fused_descriptor = std::make_shared<ComputeTaskDescriptor>();
-  // The id of fused descriptor is the id of the first descriptor in the list.
-  fused_descriptor->id = chain.front().task->id;
   FusionSequence sequence;
   if (chain.front().task->is_linkable) {
     // The first task is linkable so it contains only linkable code. Insert
     // unlinkable meta-task with remaining shader code.
-    sequence.push_back(
-        NonLinkableStub(-1, chain.front().task->input_buffers[0].id,
-                        chain.front().task->input_buffers[0].id));
+    sequence.push_back(NonLinkableStub(-1, chain.front().src_tensors_ids[0],
+                                       chain.front().src_tensors_ids[0]));
   }
   sequence.insert(sequence.end(), chain.begin(), chain.end());
 
@@ -471,12 +451,12 @@ NodeDescriptor FuseChain(const FusionSequence& chain) {
   bool invalid_id = true;
   ValueId fused_id;
   for (const auto& desc : sequence) {
-    for (const auto& buffer : desc.task->input_buffers) {
-      if (invalid_id || buffer.id != fused_id) {
+    for (const auto& id : desc.src_tensors_ids) {
+      if (invalid_id || id != fused_id) {
         num_inputs++;
       }
     }
-    fused_id = desc.task->output_buffer.id;
+    fused_id = desc.dst_tensors_ids[0];
     invalid_id = false;
     num_immutables += desc.task->immutable_buffers.size();
   }
@@ -498,24 +478,25 @@ NodeDescriptor FuseChain(const FusionSequence& chain) {
     } else {
       // Declare output buffer only for the first unlinkable task.
       buffer_declarations +=
-          desc.task->output_buffer.declaration + "[[buffer(0)]],\n";
+          desc.task->dst_tensors_names[0] + "[[buffer(0)]],\n";
       output_index++;
     }
 
     std::string call_arguments;
-    for (const auto& buffer : desc.task->input_buffers) {
-      if (invalid_id || buffer.id != fused_id) {
+    for (int i = 0; i < desc.task->src_tensors_names.size(); ++i) {
+      if (invalid_id || desc.src_tensors_ids[i] != fused_id) {
         std::string index = std::to_string(input_index);
         std::string name = (desc.task->is_linkable ? (" buffer" + index) : "");
-        buffer_declarations +=
-            buffer.declaration + name + "[[buffer(" + index + ")]],\n";
+        buffer_declarations += desc.task->src_tensors_names[i] + name +
+                               "[[buffer(" + index + ")]],\n";
         call_arguments += ", buffer" + index;
         input_index++;
-        fused_descriptor->input_buffers.push_back({buffer.id, ""});
+        fused_descriptor->AddSrcTensor("", {});
+        node_desc.src_tensors_ids.push_back(desc.src_tensors_ids[i]);
       }
     }
     // We have an output id that is the input for the next task.
-    fused_id = desc.task->output_buffer.id;
+    fused_id = desc.dst_tensors_ids[0];
     invalid_id = false;
 
     for (const auto& buffer : desc.task->immutable_buffers) {
@@ -551,14 +532,16 @@ NodeDescriptor FuseChain(const FusionSequence& chain) {
   fused_descriptor->shader_source =
       absl::Substitute(non_linkable.task->shader_source, function_code + "$0",
                        buffer_declarations + "$1", call_code);
-  fused_descriptor->output_buffer = {fused_id, ""};
+  fused_descriptor->AddDstTensor("", {});
   fused_descriptor->resize_function = non_linkable.task->resize_function;
+  node_desc.dst_tensors_ids = {fused_id};
+  node_desc.task = fused_descriptor;
+  // The id of fused descriptor is the id of the first descriptor in the list.
+  node_desc.id = chain.front().id;
   for (const auto& desc : sequence) {
-    fused_descriptor->description += desc.task->description + "_";
+    node_desc.description += desc.description + "_";
   }
 
-  NodeDescriptor node_desc;
-  node_desc.task = fused_descriptor;
   return node_desc;
 }
 

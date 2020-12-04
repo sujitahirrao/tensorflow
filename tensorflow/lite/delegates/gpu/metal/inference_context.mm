@@ -62,8 +62,9 @@ using ::tflite::gpu::TensorUsageRecord;
   for (const auto& node : compiledModel.nodes) {
     TFLComputeTask* task = [[TFLComputeTask alloc] init];
     RETURN_IF_ERROR([task compileWithDevice:_device
-                             taskDescriptor:node.task
+                             taskDescriptor:node
                              runtimeOptions:_options]);
+    [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
   _tensorShapes = compiledModel.tensor_shapes;

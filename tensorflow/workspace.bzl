@@ -69,8 +69,7 @@ def clean_dep(dep):
     return str(Label(dep))
 
 # If TensorFlow is linked as a submodule.
-# path_prefix is no longer used.
-# tf_repo_name is thought to be under consideration.
+# path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_repositories(path_prefix, tf_repo_name)
     tf_bind()
@@ -135,11 +134,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "eb087959b684d2d3965f8914075032e3995e4726ac8ce9c09a367863ff184b99",
-        strip_prefix = "XNNPACK-0a9c1200ccb49bba0170a46a62044b13714f39a3",
+        sha256 = "b6badf61153584d28ee40c8f8c553b79a1ee4642008c28d953ffaea47e308511",
+        strip_prefix = "XNNPACK-1a803b6e9b48aad978b33d648b7db00ffc300f60",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0a9c1200ccb49bba0170a46a62044b13714f39a3.zip",
-            "https://github.com/google/XNNPACK/archive/0a9c1200ccb49bba0170a46a62044b13714f39a3.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/1a803b6e9b48aad978b33d648b7db00ffc300f60.zip",
+            "https://github.com/google/XNNPACK/archive/1a803b6e9b48aad978b33d648b7db00ffc300f60.zip",
         ],
     )
 
@@ -686,8 +685,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "750049d78b7421344882948cdf98fd233a557615"
-    LLVM_SHA256 = "c0f5c113e352fc24f5e6b31f5d0ac1c6b150585db7a5ea01db7c0d1475898145"
+    LLVM_COMMIT = "18603319321a6c1b158800bcc60035ee01549516"
+    LLVM_SHA256 = "346e1e684cc5ceac862f0748fbf24c40f20788f74538896529b926324d3f253a"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

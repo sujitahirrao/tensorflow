@@ -27,10 +27,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-struct NodeDescriptor {
-  ComputeTaskDescriptorPtr task;
-};
-
 struct CompiledModel {
   std::vector<NodeDescriptor> nodes;
   std::map<ValueId, BHWC> tensor_shapes;
