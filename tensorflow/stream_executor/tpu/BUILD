@@ -5,7 +5,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     default_visibility = [
         "//learning/brain/experimental/dtensor:__subpackages__",
-        "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -65,7 +64,8 @@ cc_library(
     hdrs = ["noncopyable_buffer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
