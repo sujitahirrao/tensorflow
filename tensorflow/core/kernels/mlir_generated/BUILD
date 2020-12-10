@@ -58,6 +58,7 @@ filegroup(
         "unranked_op_gpu_is_inf.cc",
         "unranked_op_gpu_log.cc",
         "unranked_op_gpu_logical_not.cc",
+        "unranked_op_gpu_neg.cc",
         "unranked_op_gpu_real.cc",
         "unranked_op_gpu_rsqrt.cc",
         "unranked_op_gpu_sign.cc",
@@ -142,6 +143,7 @@ tf_kernel_library(
             ":is_inf_unranked_kernels",
             ":log_unranked_kernels",
             ":logical_not_unranked_kernels",
+            ":neg_unranked_kernels",
             ":real_unranked_kernels",
             ":rsqrt_unranked_kernels",
             ":sign_unranked_kernels",
@@ -159,7 +161,16 @@ tf_kernel_library(
     srcs = [
         "unranked_op_gpu_add.cc",
         "unranked_op_gpu_bitwise_and.cc",
+        "unranked_op_gpu_bitwise_or.cc",
+        "unranked_op_gpu_bitwise_xor.cc",
         "unranked_op_gpu_equal.cc",
+        "unranked_op_gpu_greater.cc",
+        "unranked_op_gpu_greater_equal.cc",
+        "unranked_op_gpu_less.cc",
+        "unranked_op_gpu_less_equal.cc",
+        "unranked_op_gpu_logical_and.cc",
+        "unranked_op_gpu_logical_or.cc",
+        "unranked_op_gpu_not_equal.cc",
     ],
     tags = [
         "manual",
@@ -167,11 +178,15 @@ tf_kernel_library(
     deps = [
         ":add_v2_unranked_kernels",
         ":bitwise_and_unranked_kernels",
+        ":bitwise_or_unranked_kernels",
+        ":bitwise_xor_unranked_kernels",
         ":equal_unranked_kernels",
         ":greater_equal_unranked_kernels",
         ":greater_unranked_kernels",
         ":less_equal_unranked_kernels",
         ":less_unranked_kernels",
+        ":logical_and_unranked_kernels",
+        ":logical_or_unranked_kernels",
         ":maximum_unranked_kernels",
         ":minimum_unranked_kernels",
         ":not_equal_unranked_kernels",
@@ -239,6 +254,9 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -375,25 +393,52 @@ gen_kernel_library(
     # unroll_factors = "4",
 )
 
-gen_kernel_library(
-    name = "bitwise_and",
-    generate_ranked = False,
-    generate_unranked = True,
-    tile_size = "256,1,1",
-    types = [
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-        # TODO(b/172804967): Enable once fixed.
-        # "ui8",
-        # "ui16",
-        # "ui32",
-        # "ui64",
-    ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
-    # unroll_factors = "4",
-)
+# Bitwise operations.
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            # TODO(b/172804967): Enable once fixed.
+            # "ui8",
+            # "ui16",
+            # "ui32",
+            # "ui64",
+        ],
+        # TODO(b/174543802): Enable once fusion heursitics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "bitwise_and",
+        "bitwise_or",
+        "bitwise_xor",
+    ]
+]
+
+# Logical operations.
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "i1",
+        ],
+        # TODO(b/174543802): Enable once fusion heursitics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "logical_and",
+        "logical_or",
+    ]
+]
 
 [
     gen_kernel_library(
@@ -469,6 +514,28 @@ gen_kernel_library(
     ]
 ]
 
+# Kernels that support all floating-point and signed int types.
+[
+    gen_kernel_library(
+        name = name,
+        generate_unranked = True,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "neg",
+    ]
+]
+
 # Kernels that support all floating-point types.
 [
     gen_kernel_library(
@@ -488,7 +555,6 @@ gen_kernel_library(
         "floor",
         "is_finite",
         "log",
-        "neg",
         "rsqrt",
         "sqrt",
         "tanh",
