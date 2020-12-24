@@ -2720,7 +2720,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 
     Args:
       tensor: A Tensor. Must be one of the following types:
-      uint8, int16, int32, int64, float32, bool Up to 8-D.
+      uint8, int8, int16, int32, int64, float32, bool Up to 8-D.
 
       axis: A Tensor. Must be one of the following types: int32, int64.
       with only 1 element which is the axis index.
@@ -2729,12 +2729,12 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, TFL_Quint8, I1]>:$input,
+    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$input,
     TFL_I32Tensor:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, TFL_Quint8, I1]>:$output);
+    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$output);
 }
 
 // Select has many instances in TF models where one or more of its operands
@@ -4257,6 +4257,11 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
   let description = [{
     The NumericVerify op is a debugging op to verify the numericals of the two
     activations. It is a custom op in TFLite.
+    If log_if_failed is true, the NumericVerify op calculates statistics on
+    differences between float and quantized activations, output
+    logs, set differences to the output tensors, and throws an error if errors
+    above tolerance exist. If log_if_failed = false, then it doesn't care about
+    errors.
   }];
 
   let arguments = (ins
@@ -4264,10 +4269,11 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
     TFL_TensorOf<[F32]>:$ref,
 
     // Attributes
-    DefaultValuedAttr<F32Attr, "0.1">:$tolerance
+    DefaultValuedAttr<F32Attr, "0.1">:$tolerance,
+    DefaultValuedAttr<BoolAttr, "false">:$log_if_failed
   );
 
-  let results = (outs);
+  let results = (outs TFL_FpTensor:$output);
 }
 
 // SVDF op.
