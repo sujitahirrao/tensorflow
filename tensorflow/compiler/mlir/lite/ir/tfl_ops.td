@@ -592,7 +592,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
     AccumulatorUniformScale<3, 1, 2>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<0, 2>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<0, 1>,
     TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
@@ -620,7 +620,6 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
     int GetQuantizationDimIndex() { return 0; }
-    int GetAffineOperandIndex() { return 2; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
@@ -2470,7 +2469,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>, AffineQuantizedOpInterface]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
@@ -2488,6 +2487,12 @@ def TFL_PReluOp : TFL_Op<"prelu", [
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return -1; }
+  }];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
@@ -2644,8 +2649,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
                                   TFL_SameFirstOperandAndFirstResultElementType,
-                                  SameOperandsAndResultShape,
-                                  NoQuantizableResult]> {
+                                  SameOperandsAndResultShape]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
