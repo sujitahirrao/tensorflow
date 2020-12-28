@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,24 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+set -x
 set -e
 
-# Install latest bazel
-source tensorflow/tools/ci_build/release/common.sh
-install_bazelisk
-which bazel
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 
-# We need py3 lint
-sudo pip3 install pep8
+FREE_MEM="$(free -m | awk '/^Mem/ {print $2}')"
+# Use "-j 4" only memory is larger than 2GB
+if [[ "FREE_MEM" -gt "2000" ]]; then
+  NO_JOB=4
+else
+  NO_JOB=1
+fi
 
-# TODO(gunan): figure out why we get stuck with later versions of pylint.
-# Install pylint.
-sudo python3 -m pip install setuptools --upgrade
-sudo python2 -m pip install pylint==1.6.4
-sudo python3 -m pip install pylint==2.6.0
-
-# TODO(yifeif): print pylint version for debug. remove later.
-python3 -m pylint --version
-
-# Run tensorflow sanity checks.
-tensorflow/tools/ci_build/ci_sanity.sh
+make -j ${NO_JOB} TARGET=linux_riscv64 -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile $@
