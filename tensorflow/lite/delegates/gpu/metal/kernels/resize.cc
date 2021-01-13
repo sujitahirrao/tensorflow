@@ -33,11 +33,7 @@ namespace metal {
 
 std::string GetResizeBilinearCode(const Resize2DAttributes& attr) {
   std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
     return;
@@ -65,7 +61,6 @@ kernel void ComputeFunction(
   // bilinear interpolation
   FLT4 value = mix(mix(tex11, tex21, static_cast<FLT>(t.x)),
                    mix(tex12, tex22, static_cast<FLT>(t.x)), static_cast<FLT>(t.y));
-  $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }
 )";
@@ -74,11 +69,7 @@ kernel void ComputeFunction(
 
 std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
   std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
     return;
@@ -106,8 +97,6 @@ kernel void ComputeFunction(
   c += "  coord.y = min(coord.y, args.src_tensor.Height() - 1);\n";
   c += R"(
   FLT4 value = args.src_tensor.Read(coord.x, coord.y, gid.z);
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
-  $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }
 )";

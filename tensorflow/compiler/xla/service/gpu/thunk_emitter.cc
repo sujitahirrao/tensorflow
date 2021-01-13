@@ -43,7 +43,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-
 std::unique_ptr<Thunk> ThunkEmitter::BuildFftThunk(const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
   return absl::make_unique<FftThunk>(
@@ -115,27 +114,9 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
       /*implements_whole_instruction=*/true);
 }
 
-std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
-    const HloInstruction* inst) {
-  CHECK_EQ(HloOpcode::kOutfeed, inst->opcode());
-
-  ShapeTree<BufferAllocation::Slice> slices(inst->operand(0)->shape());
-  slices.ForEachMutableElement([&](const ShapeIndex& index,
-                                   BufferAllocation::Slice* slice) {
-    auto status_or_slice = MaybeGetAllocationSlice(*inst->operand(0), index);
-    if (status_or_slice.ok()) {
-      *slice = status_or_slice.ValueOrDie();
-    }
-  });
-  OutfeedConfig config = GetOutfeedConfig(inst);
-  return absl::make_unique<OutfeedThunk>(context_->GetThunkInfo(inst),
-                                         std::move(config), std::move(slices));
-}
-
 Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   // A CustomCall on the GPU backend can either be a custom-call to a
   // user-supplied kernel, or a call into a library like cudnn.
-
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -227,11 +208,6 @@ Status ThunkEmitter::HandleTriangularSolve(HloInstruction* hlo) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         context_->GetThunkInfo(hlo), std::move(thunks)));
   }
-  return Status::OK();
-}
-
-Status ThunkEmitter::HandleOutfeed(HloInstruction* outfeed) {
-  AddThunkToThunkSequence(BuildOutfeedThunk(outfeed));
   return Status::OK();
 }
 

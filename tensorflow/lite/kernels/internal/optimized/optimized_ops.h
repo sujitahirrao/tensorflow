@@ -76,6 +76,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
@@ -1475,7 +1476,6 @@ inline void HybridConvPerChannel(
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
   TFLITE_DCHECK_EQ(scratch_shape.FlatSize(), output_shape.FlatSize());
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * filter_rows);
     tensor_utils::ReductionSumVector(filter_data, row_sums, filter_rows,
                                      filter_cols);
     if (compute_row_sums) {

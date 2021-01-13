@@ -233,16 +233,8 @@ std::string GenerateConvolution(const ConvParams& params) {
   std::string c;
   c.reserve(16 * 1024);  // Reserve large enough buffer.
   c += R"(
-#include <metal_stdlib>
-using namespace metal;
-
-struct uniforms {
-    int4 task_sizes;
-};
-$0
-
 kernel void ComputeFunction(
-    $1
+    $0
     uint tid[[thread_index_in_threadgroup]],
     uint3 group_id[[threadgroup_position_in_grid]],
     uint3 tid3d[[thread_position_in_threadgroup]],
@@ -549,9 +541,8 @@ kernel void ComputeFunction(
         c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
         c += "      int linear_index = offset_" + s_yx +
              " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
-        c += "      uint3 gid = uint3(X + " + s_x + ", Y + " + s_y + ", Z + " +
-             s_z + ");\n";
-        c += "      $2\n";
+        c += "      args.dst_tensor.Linking(value, X + " + s_x + ", Y + " +
+             s_y + ", Z + " + s_z + ");\n";
         c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
         c += "    }\n";
       }

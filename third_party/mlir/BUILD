@@ -184,6 +184,7 @@ cc_library(
 cc_library(
     name = "CAPIIR",
     srcs = [
+        "lib/CAPI/Dialect/Standard.cpp",
         "lib/CAPI/IR/AffineExpr.cpp",
         "lib/CAPI/IR/AffineMap.cpp",
         "lib/CAPI/IR/BuiltinAttributes.cpp",
@@ -192,7 +193,6 @@ cc_library(
         "lib/CAPI/IR/IR.cpp",
         "lib/CAPI/IR/Pass.cpp",
         "lib/CAPI/IR/Support.cpp",
-        "lib/CAPI/Standard/StandardDialect.cpp",
     ],
     hdrs = [
         "include/mlir-c/AffineExpr.h",
@@ -200,15 +200,17 @@ cc_library(
         "include/mlir-c/BuiltinAttributes.h",
         "include/mlir-c/BuiltinTypes.h",
         "include/mlir-c/Diagnostics.h",
+        "include/mlir-c/Dialect/Standard.h",
         "include/mlir-c/IR.h",
         "include/mlir-c/Pass.h",
-        "include/mlir-c/StandardDialect.h",
+        "include/mlir-c/Registration.h",
         "include/mlir-c/Support.h",
         "include/mlir/CAPI/AffineExpr.h",
         "include/mlir/CAPI/AffineMap.h",
         "include/mlir/CAPI/Diagnostics.h",
         "include/mlir/CAPI/IR.h",
         "include/mlir/CAPI/Pass.h",
+        "include/mlir/CAPI/Registration.h",
         "include/mlir/CAPI/Support.h",
         "include/mlir/CAPI/Utils.h",
         "include/mlir/CAPI/Wrap.h",
@@ -1577,11 +1579,13 @@ cc_library(
             "lib/Dialect/StandardOps/IR/*.cpp",
             "lib/Dialect/StandardOps/IR/*.h",
             "lib/Dialect/StandardOps/EDSC/*.cpp",
+            "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
     ),
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
+        "include/mlir/Dialect/StandardOps/Utils/*.h",
     ]) + ["include/mlir/Transforms/InliningUtils.h"],
     includes = ["include"],
     deps = [
@@ -2944,7 +2948,7 @@ cc_library(
 cc_library(
     name = "SPIRVSerialization",
     srcs = [
-        "lib/Target/SPIRV/Serialization.cpp",
+        "lib/Target/SPIRV/Serialization/Serialization.cpp",
     ],
     hdrs = [
         "include/mlir/Target/SPIRV/Serialization.h",
@@ -2965,9 +2969,10 @@ cc_library(
 
 cc_library(
     name = "SPIRVDeserialization",
-    srcs = [
-        "lib/Target/SPIRV/Deserialization.cpp",
-    ],
+    srcs = glob([
+        "lib/Target/SPIRV/Deserialization/*.cpp",
+        "lib/Target/SPIRV/Deserialization/*.h",
+    ]),
     hdrs = [
         "include/mlir/Target/SPIRV/Deserialization.h",
     ],
@@ -4339,6 +4344,23 @@ cc_binary(
 ## OpenACC dialect
 
 gentbl(
+    name = "AccCommonGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-directive-decl",
+            "include/mlir/Dialect/OpenACC/AccCommon.td",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "@llvm-project//llvm:include/llvm/Frontend/OpenACC/ACC.td",
+    td_includes = ["external/llvm-project/llvm/include"],
+    td_srcs = [
+        "@llvm-project//llvm:acc_td_files",
+    ],
+)
+
+gentbl(
     name = "OpenACCOpsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -4372,6 +4394,7 @@ gentbl(
     td_srcs = [
         ":OpBaseTdFiles",
         ":OmpCommonTdGen",
+        "include/mlir/Dialect/OpenACC/AccCommon.td",
     ],
 )
 

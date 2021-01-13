@@ -37,10 +37,7 @@ std::string GetSoftmax1x1Code(const GpuInfo& gpu_info) {
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 ugid[[thread_position_in_grid]])
 {
@@ -117,8 +114,6 @@ kernel void ComputeFunction($1
   if (dst_s < args.src_tensor.Slices()) {
     float4 src = float4(args.src_tensor.Read(0, 0, dst_s)) - float4(maximum);
     FLT4 value = FLT4(exp(src) * sum);
-    uint3 gid = uint3(0, 0, dst_s);
-    $2
     args.dst_tensor.Write(value, 0, 0, dst_s);
   }
 })";
@@ -129,11 +124,7 @@ kernel void ComputeFunction($1
 ComputeTaskDescriptor Softmax(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
     return;
@@ -161,7 +152,6 @@ kernel void ComputeFunction(
   for (int d = 0; d < args.dst_tensor.Slices(); ++d) {
     float4 src = float4(args.src_tensor.Read(gid.x, gid.y, d)) - float4(maximum);
     FLT4 value = FLT4(exp(src) / sum);
-    $2
     args.dst_tensor.Write(value, gid.x, gid.y, d);
   }
 }
