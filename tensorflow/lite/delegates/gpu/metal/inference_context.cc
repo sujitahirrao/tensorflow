@@ -109,7 +109,7 @@ absl::Status MergeNodes(MetalNode* src, MetalNode* dst) {
   }
   dst->outputs[0] = src->outputs[0];
   dst->name += " linked : " + src->name;
-  return dst->task.GetTaskDesc().AddTask(&src->task.GetTaskDesc());
+  return dst->task.AddTask(&src->task);
 }
 }  // namespace
 
@@ -132,7 +132,11 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(
       Compile(graph, metal_device.GetInfo(), create_info.precision));
   RETURN_IF_ERROR(Merge());
-  RETURN_IF_ERROR(CompileModelWithDevice(&metal_device));
+  RETURN_IF_ERROR(CompileOperations(&metal_device));
+  RETURN_IF_ERROR(AllocateTensors(&metal_device));
+  BindTensorsToOperations();
+  RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
+  RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
   return absl::OkStatus();
 }
 
@@ -225,7 +229,11 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       MetalNode metal_node;
-      metal_node.task.Init(std::move(gpu_op.operation));
+      if (gpu_op.task_desc) {
+        metal_node.task.Init(std::move(gpu_op.task_desc));
+      } else {
+        metal_node.task.Init(std::move(gpu_op.operation));
+      }
       metal_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
@@ -279,15 +287,13 @@ absl::Status InferenceContext::Merge() {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];
-    if (!linkable_node.task.GetTaskDesc().is_linkable ||
-        linkable_node.outputs.size() != 1 ||
+    if (!linkable_node.task.IsLinkable() || linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
-    const auto& original_dst_def =
-        node.task.GetTaskDesc().definition.dst_tensors[0];
+    const auto& original_dst_def = node.task.GetDefinition().dst_tensors[0];
     const auto& link_dst_def =
-        linkable_node.task.GetTaskDesc().definition.dst_tensors[0];
+        linkable_node.task.GetDefinition().dst_tensors[0];
     if (original_dst_def != link_dst_def) {
       continue;
     }
@@ -298,24 +304,10 @@ absl::Status InferenceContext::Merge() {
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::CompileModelWithDevice(MetalDevice* device) {
-  // Metal resources are created here.
+absl::Status InferenceContext::CompileOperations(MetalDevice* device) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.task.Compile(precision_, device));
+    RETURN_IF_ERROR(node.task.Compile(device));
   }
-  for (auto& node : nodes_) {
-    std::vector<BHWC> src_shapes;
-    std::vector<BHWC> dst_shapes;
-    for (const auto& in_id : node.inputs) {
-      src_shapes.push_back(tensor_reserver_.Get(in_id).shape);
-    }
-    for (const auto& out_id : node.outputs) {
-      dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
-    }
-    RETURN_IF_ERROR(
-        node.task.UpdateParams(device->GetInfo(), src_shapes, dst_shapes));
-  }
-  RETURN_IF_ERROR(AllocateTensors(device));
   return absl::OkStatus();
 }
 
@@ -343,7 +335,6 @@ absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
   }
 
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
-  BindTensorsToOperations();
   return absl::OkStatus();
 }
 
@@ -362,15 +353,28 @@ void InferenceContext::BindTensorsToOperations() {
   for (auto& node : nodes_) {
     const auto& src_ids = node.inputs;
     for (int i = 0; i < src_ids.size(); ++i) {
-      MetalSpatialTensor* tensor = GetTensor(src_ids[i]);
-      node.task.SetSrcTensor(*tensor, i);
+      node.task.SetSrcTensor(GetTensor(src_ids[i]), i);
     }
     const auto& dst_ids = node.outputs;
     for (int i = 0; i < dst_ids.size(); ++i) {
-      MetalSpatialTensor* tensor = GetTensor(dst_ids[i]);
-      node.task.SetDstTensor(*tensor, i);
+      node.task.SetDstTensor(GetTensor(dst_ids[i]), i);
     }
   }
+}
+
+absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
+  for (auto& node : nodes_) {
+    std::vector<BHWC> src_shapes;
+    std::vector<BHWC> dst_shapes;
+    for (const auto& in_id : node.inputs) {
+      src_shapes.push_back(tensor_reserver_.Get(in_id).shape);
+    }
+    for (const auto& out_id : node.outputs) {
+      dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
+    }
+    RETURN_IF_ERROR(node.task.UpdateParams(gpu_info, src_shapes, dst_shapes));
+  }
+  return absl::OkStatus();
 }
 
 void InferenceContext::GetUsages(std::map<ValueId, int2>* usages) {
@@ -465,13 +469,21 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::Tune(TuningType tuning_type,
+                                    MetalDevice* device) {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.task.Tune(tuning_type, device));
+  }
+  return absl::OkStatus();
+}
+
 void InferenceContext::EncodeWithEncoder(
     id<MTLComputeCommandEncoder> command_encoder,
     const std::map<ValueId, id<MTLBuffer>>& in_out_buffers) {
   UpdatePreallocatedTensors(in_out_buffers);
   for (int i = 0; i < nodes_.size(); ++i) {
     auto& task = nodes_[i].task;
-    task.EncodeWithEncoder(command_encoder);
+    task.Encode(command_encoder);
   }
 }
 
@@ -483,7 +495,7 @@ void InferenceContext::EncodeWithCommandBuffer(
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
     auto& task = nodes_[i].task;
-    task.EncodeWithEncoder(encoder);
+    task.Encode(encoder);
     [encoder endEncoding];
   }
 }
@@ -497,7 +509,7 @@ void InferenceContext::EncodeWithCommandQueue(
     id<MTLComputeCommandEncoder> encoder =
         [command_buffer computeCommandEncoder];
     auto& task = nodes_[i].task;
-    task.EncodeWithEncoder(encoder);
+    task.Encode(encoder);
     [encoder endEncoding];
     if (i % flush_period == (flush_period - 1)) {
       [command_buffer commit];
@@ -518,14 +530,14 @@ void InferenceContext::UpdatePreallocatedTensors(
     for (int i = 0; i < src_ids.size(); ++i) {
       const auto& it = preallocated_tensors_.find(src_ids[i]);
       if (it != preallocated_tensors_.end()) {
-        task.SetSrcTensor(it->second, i);
+        task.SetSrcTensor(&it->second, i);
       }
     }
     const auto& dst_ids = nodes_[task_index].outputs;
     for (int i = 0; i < dst_ids.size(); ++i) {
       const auto& it = preallocated_tensors_.find(dst_ids[i]);
       if (it != preallocated_tensors_.end()) {
-        task.SetDstTensor(it->second, i);
+        task.SetDstTensor(&it->second, i);
       }
     }
   }

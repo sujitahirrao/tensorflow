@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
@@ -112,16 +113,18 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
 
-  absl::Status CompileModelWithDevice(MetalDevice* device);
+  absl::Status CompileOperations(MetalDevice* device);
 
   absl::Status Merge();
   absl::Status AllocateTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
+  absl::Status UpdateParams(const GpuInfo& gpu_info);
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(std::map<ValueId, int2>* usages);
   void UpdatePreallocatedTensors(
       const std::map<ValueId, id<MTLBuffer>>& preallocated);
+  absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   struct DummyTensor {
     BHWC shape;

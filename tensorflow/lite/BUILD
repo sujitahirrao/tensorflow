@@ -541,6 +541,29 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "interpreter_test_util",
+    testonly = True,
+    hdrs = ["interpreter_test_util.h"],
+    deps = [
+        ":builtin_op_data",
+        ":external_cpu_backend_context",
+        ":framework",
+        ":string_util",
+        ":version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "//third_party/eigen3",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # Test main interpreter
 cc_test(
     name = "interpreter_test",
@@ -557,6 +580,7 @@ cc_test(
         ":builtin_op_data",
         ":external_cpu_backend_context",
         ":framework",
+        ":interpreter_test_util",
         ":string_util",
         ":util",
         ":version",
@@ -615,6 +639,7 @@ cc_test(
         "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
+        "testdata/while_op_with_forwarding_input.bin",
     ],
     tags = [
         "tflite_not_portable",
@@ -622,6 +647,8 @@ cc_test(
     ],
     deps = [
         ":framework",
+        ":interpreter_test_util",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:util",
@@ -723,7 +750,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:op_resolver",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 

@@ -372,18 +372,6 @@ def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin", [],
   }];
 }
 
-def HLOClient_AsinhOp : HLOClient_UnaryElementwiseOp<"asinh", [],
-    HLO_FpOrComplexTensor> {
-  let summary = "Asinh operation";
-
-  let description = [{
-    Returns `Asinh(operand)` element-wise.
-
-    $$
-    \asinh(x) = log(x + sqrt(x^2 + 1))
-    $$
-  }];
-}
 def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
     HLO_FpOrComplexTensor> {
   let summary = "Atan operator";
@@ -393,6 +381,20 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
 
     $$
     \atan(x) = \atan2(x, 1)
+    $$
+  }];
+}
+
+def HLOClient_AtanhOp : HLOClient_UnaryElementwiseOp<"atanh", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Atanh operator";
+
+  let description = [{
+    Returns `Atanh(operand)` element-wise.
+
+    $$
+    \atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
+              = nan                          otherwise
     $$
   }];
 }

@@ -886,7 +886,10 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     int first_execution_plan_index, const std::vector<int>& execution_plan,
     int* last_execution_plan_index_prepared) {
   if (first_execution_plan_index == 0) {
-    has_dynamic_tensors_ = false;
+    // Forwarding inputs without modification won't be not evaluated in the
+    // operators. So, it needs to look up the subgraph's output tensors at the
+    // beginning.
+    has_dynamic_tensors_ = HasDynamicTensorImpl(context_, outputs());
   }
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan.size(); execution_plan_index++) {
@@ -1487,6 +1490,11 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
                                        "ModifyGraphWithDelegate");
+
+  if (delegate == nullptr) {
+    ReportError("Null delegate.");
+    return kTfLiteDelegateError;
+  }
 
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
