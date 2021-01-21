@@ -200,6 +200,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
@@ -337,6 +338,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":absl_casters",
+        ":py_client",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

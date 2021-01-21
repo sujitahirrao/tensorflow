@@ -91,8 +91,8 @@ class GpuUnaryOpTest : public OpsTestBase {
 
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
-  void Test(const std::string op_name, const TensorShape& shape,
-            absl::InlinedVector<T, 10> input,
+  void Test(const std::string& op_name, const TensorShape& shape,
+            const absl::InlinedVector<T, 10>& input,
             BaselineOutT (*baseline_callback)(BaselineT),
             const test::GpuOpsTestConfig& config) {
     // Prepare inputs and compute expected results.
@@ -104,6 +104,16 @@ class GpuUnaryOpTest : public OpsTestBase {
             repeated_input, baseline_callback);
 
     RunAndExpectResult<T, OutT>(op_name, shape, repeated_input, expected_output,
+                                config);
+  }
+
+  template <typename T, typename OutT>
+  void TestEmptyShape(const std::string& op_name,
+                      const test::GpuOpsTestConfig& config) {
+    TensorShape shape{0, 1, 2};
+    absl::InlinedVector<T, 10> empty_input = {};
+    absl::InlinedVector<OutT, 10> expected_output = {};
+    RunAndExpectResult<T, OutT>(op_name, shape, empty_input, expected_output,
                                 config);
   }
 
@@ -155,6 +165,11 @@ class GpuUnaryOpTest : public OpsTestBase {
     Test<NativeT, NativeBaselineT, NativeOutT, NativeBaselineOutT>(           \
         #op_name, test::DefaultInputShape(), input_values, baseline_callback, \
         config);                                                              \
+  }                                                                           \
+  TEST_F(GpuUnaryOpTest, op_name##InT##EmptyShape) {                          \
+    using NativeT = EnumToDataType<InT>::Type;                                \
+    using NativeOutT = EnumToDataType<OutT>::Type;                            \
+    TestEmptyShape<NativeT, NativeOutT>(#op_name, config);                    \
   }
 
 /// Test `tf.Abs`.
@@ -191,6 +206,17 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::acos, test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Acosh`.
+
+// TODO(herhut): Give this better input once TF testing also supports NaN.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Acosh, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterEqualOne<float>(),
+    std::acosh, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Acosh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterEqualOne<double>(),
+    std::acosh, test::GpuOpsTestConfig())
+
 /// Test `tf.Asin`.
 
 // Test only values in the function domain. The othweise returned nan value
@@ -201,6 +227,14 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+/// Test `tf.Asinh`.
+
+GENERATE_DEFAULT_TEST(Asinh, DT_FLOAT, DT_FLOAT, std::asinh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Asinh, DT_DOUBLE, DT_DOUBLE, std::asinh,
+                      test::GpuOpsTestConfig())
 
 /// Test `tf.Atan`.
 
@@ -279,11 +313,41 @@ GENERATE_DEFAULT_TEST(Cosh, DT_DOUBLE, DT_DOUBLE, std::cosh,
 
 /// Test `tf.Erf`.
 
-GENERATE_DEFAULT_TEST(Erf, DT_FLOAT, DT_FLOAT, std::erf,
-                      test::GpuOpsTestConfig())
+// Use specific values to cover the different intervals of the f64
+// approximation.
+//   - (-inf, -sqrt(kMaxlog)]
+//   - [-sqrt(kMaxlog), -8]
+//   - [-8, -1]
+//   - [-1, 0]
+//   - [0, 1]
+//   - [1, 8]
+//   - [8, sqrt(kMaxlog)]
+//   - [sqrt(kMaxlog), inf)
+static constexpr double kSqrtMaxlog = 26.6417;
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Erf, DT_DOUBLE, DT_DOUBLE,
+    test::InputAsVector<double>(
+        {-1000.0, -27.0,       -26.7, -kSqrtMaxlog, -26.641, -16.0, -9.0, -8.2,
+         -8.1,    -8.0,        -7.9,  -6.7,         -4.5,    -2.3,  -1.5, -1.2,
+         -1.1,    -1.0,        -0.9,  -0.3,         -0.2,    -0.1,  0.0,  0.1,
+         0.2,     0.3,         0.9,   1.0,          1.1,     1.2,   1.5,  2.3,
+         4.5,     6.7,         7.9,   8.0,          8.1,     8.2,   9.0,  16.0,
+         26.641,  kSqrtMaxlog, 26.7,  27.0,         1000.0}),
+    std::erf, test::GpuOpsTestConfig())
 
-GENERATE_DEFAULT_TEST(Erf, DT_DOUBLE, DT_DOUBLE, std::erf,
-                      test::GpuOpsTestConfig())
+// Use specific values to cover the different intervals of the f32
+// approximation.
+//   - (-inf, -4]
+//   - [-4, 4]
+//   - [4, inf)
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Erf, DT_FLOAT, DT_FLOAT,
+    test::InputAsVector<float>({-100.0, -16.0, -8.9, -6.7, -4.1, -4.0, -3.9,
+                                -3.4,   -2.3,  -1.2, -1.1, -1.0, -0.5, -0.2,
+                                -0.1,   0.0,   0.1,  0.2,  0.5,  1.0,  1.1,
+                                1.2,    2.3,   3.4,  3.9,  4.0,  4.1,  6.7,
+                                8.9,    16.0,  100.0}),
+    std::erf, test::GpuOpsTestConfig())
 
 GENERATE_DEFAULT_TEST_2(Erf, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::erf,
                         test::GpuOpsTestConfig())
@@ -523,6 +587,14 @@ GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, std::sin,
 GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
                         test::GpuOpsTestConfig())
 
+/// Test `tf.Sinh`.
+
+GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
+                      test::GpuOpsTestConfig())
+
 /// Test `tf.Sqrt`.
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
@@ -538,6 +610,17 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Sqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
     test::DefaultInputGreaterOrEqualToZero<Eigen::half>(), std::sqrt,
     test::GpuOpsTestConfig())
+
+/// Test `tf.Tan`.
+
+GENERATE_DEFAULT_TEST(Tan, DT_FLOAT, DT_FLOAT, std::tan,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, std::tan,
+                      test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_2(Tan, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tan,
+                        test::GpuOpsTestConfig())
 
 /// Test `tf.Tanh`.
 
