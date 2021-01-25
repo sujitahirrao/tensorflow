@@ -584,15 +584,13 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_protobuf",
         patch_file = clean_dep("//third_party/protobuf:protobuf.patch"),
-        sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
-        strip_prefix = "protobuf-3.9.2",
+        sha256 = "bf0e5070b4b99240183b29df78155eee335885e53a8af8683964579c214ad301",
+        strip_prefix = "protobuf-3.14.0",
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
-        system_link_files = {
-            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
-        },
+        system_link_files = {"//third_party/systemlibs:protobuf.bzl": "protobuf.bzl"},
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
-            "https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.14.0.zip",
+            "https://github.com/protocolbuffers/protobuf/archive/v3.14.0.zip",
         ],
     )
 
@@ -685,8 +683,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "e27197f3605450c372ddc71922d0e9982b30e115"
-    LLVM_SHA256 = "8062916c79a8210b377d99d956dbe5ba790f9aa58eeeee2797735c9df80492cc"
+    LLVM_COMMIT = "0057cc5a215e5a26cfbd7e1707b55bf05fa9b6bf"
+    LLVM_SHA256 = "526adad5eda6240bc63ee6a5dd500940beb9115212519f409a061f117f927052"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
