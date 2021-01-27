@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
@@ -57,12 +58,12 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   explicit PjRtStreamExecutorDevice(
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
-      std::string device_kind, int host_id = 0)
+      std::string device_kind, int task_id = 0)
       : id_(id),
         device_ordinal_(
             local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
-        host_id_(host_id),
+        task_id_(task_id),
         device_kind_(std::move(device_kind)) {}
   ~PjRtStreamExecutorDevice() override {}
 
@@ -72,7 +73,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
     client_ = client;
   }
 
-  int host_id() const override { return host_id_; }
+  int task_id() const override { return task_id_; }
 
   // Return `platform_id` from client.
   PjRtPlatformId platform_id() const;
@@ -106,13 +107,13 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   Status TransferToInfeed(const LiteralSlice& literal) const override;
 
-  StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const override;
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override;
 
  private:
   const int id_;
   const int device_ordinal_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
-  const int host_id_;
+  const int task_id_;
   const std::string device_kind_;
   PjRtClient* client_ = nullptr;
 };
@@ -123,13 +124,13 @@ class PjRtStreamExecutorClient : public PjRtClient {
   explicit PjRtStreamExecutorClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int host_id, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      int task_id, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
 
-  int host_id() const override { return host_id_; }
+  int task_id() const override { return task_id_; }
 
   int device_count() const override { return devices_.size(); }
   int addressable_device_count() const override {
@@ -186,7 +187,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device) override;
+      std::function<void()> on_done_with_host_buffer,
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
@@ -194,6 +196,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      std::function<void()> on_delete_callback) override;
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();
@@ -254,7 +260,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   std::map<int, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
-  int host_id_;
+  int task_id_;
 
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
