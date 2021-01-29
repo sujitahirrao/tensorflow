@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -59,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -73,12 +73,6 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-class TensorListPatternRewriter : public PatternRewriter {
- public:
-  explicit TensorListPatternRewriter(FuncOp fn)
-      : PatternRewriter(fn.getContext()) {}
-};
-
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
     : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
@@ -87,15 +81,12 @@ struct LowerStaticTensorListPass
 
   void runOnOperation() override;
 
-  // Apply type and op changes within a function.
-  LogicalResult RewriteFunction(FuncOp func,
-                                TensorListPatternRewriter *rewriter);
-
   Option<bool> allow_tensorlist_pass_through{
       *this, "allow-tensorlist-pass-through",
       llvm::cl::desc(
-          "If specified to true, then the tensorlist ops may pass "
-          "through if it can't be handled by this pass (default false)"),
+          "When specified to true, if the tensorlist ops can't be properly "
+          "legalized by this pass, then the IR won't be changed so that "
+          "tensorlist ops can pass through (default false)"),
       llvm::cl::init(false)};
 };
 
@@ -985,8 +976,7 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_lower_static_tensor_list.inc"
 
-LogicalResult LowerStaticTensorListPass::RewriteFunction(
-    FuncOp func, TensorListPatternRewriter *rewriter) {
+void LowerStaticTensorListPass::runOnOperation() {
   auto *context = &getContext();
 
   // TensorFlow operations that doesn't have operands and results of type
@@ -1009,7 +999,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
                       TF::TensorListGetItemOp, TF::TensorListLengthOp,
                       TF::TensorListPushBackOp, TF::TensorListReserveOp,
                       TF::TensorListSetItemOp, TF::TensorListStackOp,
-                      TF::TensorListResizeOp>();
+                      TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<ConstantOp>();
   target.addLegalOp<FuncOp>();
@@ -1029,42 +1019,10 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile, ConvertWhileRegion>(
       context);
-  return applyPartialConversion(func, target, std::move(patterns));
-}
-
-void LowerStaticTensorListPass::runOnOperation() {
-  // TODO(haoliang): currently we process the `main` function first, and the
-  // remaining functions may be processed in arbitrary order. However, this will
-  // have a potential issue when one function taking a `DT_VARIANT` is processed
-  // before the function that produces the `DT_VARIANT`. We need to carefully
-  // order the functions to be processed.
-  std::vector<FuncOp> funcs_in_module;
-  for (auto func : getOperation().getOps<FuncOp>()) {
-    // Always place the main function to be the first in the list.
-    if (func.getName() == "main") {
-      funcs_in_module.insert(funcs_in_module.begin(), func);
-    } else {
-      funcs_in_module.push_back(func);
-    }
-  }
-  auto cloned_module = getOperation().clone();
-  for (auto func : funcs_in_module) {
-    TensorListPatternRewriter rewriter(func);
-    if (failed(RewriteFunction(func, &rewriter))) {
-      if (allow_tensorlist_pass_through) {
-        // If the current pass allows unsupported tensorlist ops to pass
-        // through, in terms of failure we should roll back all the changes done
-        // so far. The reason that we can't rely on dialect conversion to
-        // automatically roll back the changes is that, the dialect conversion
-        // is currently applied on function level.
-        BlockAndValueMapping mapping;
-        getOperation().body().getBlocks().clear();
-        cloned_module.body().cloneInto(&getOperation().body(), mapping);
-        break;
-      } else {
-        signalPassFailure();
-      }
-      return;
+  if (failed(applyPartialConversion(getOperation(), target,
+                                    std::move(patterns)))) {
+    if (!allow_tensorlist_pass_through) {
+      signalPassFailure();
     }
   }
 }

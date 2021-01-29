@@ -339,6 +339,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitReduceWindowOp(instr);
     case HloOpcode::kRemainder:
       return CreateOpWithoutAttrs<lmhlo::RemOp>(instr);
+    case HloOpcode::kReplicaId:
+      return CreateOpWithoutAttrs<lmhlo::ReplicaIdOp>(instr);
     case HloOpcode::kReverse:
       return EmitReverseOp(instr);
     case HloOpcode::kRoundNearestAfz:
@@ -1311,6 +1313,9 @@ Status LhloDialectEmitter::GetOrCreateView(
 }
 
 Status LhloDialectEmitter::Initialize() {
+  mlir::IntegerAttr unique_id =
+      builder_.getI32IntegerAttr(computation_.parent()->unique_id());
+  module_->setAttr("hlo.unique_id", unique_id);
   std::string function_name =
       computation_.name().empty() ? "__compute" : computation_.name();
 
