@@ -374,6 +374,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
@@ -457,6 +458,19 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_library(
+    name = "mean_stddev_normalization_test_util",
+    testonly = 1,
+    srcs = ["mean_stddev_normalization_test_util.cc"],
+    hdrs = ["mean_stddev_normalization_test_util.h"],
+    deps = [
+        ":mean_stddev_normalization",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
     ],
 )
 

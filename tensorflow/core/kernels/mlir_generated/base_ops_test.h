@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
-#define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
-
-#include <iostream>
+#ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
+#define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
@@ -56,29 +54,29 @@ TensorShape DefaultInputShape();
 
 /// Helper functions to configure tests.
 
-struct GpuOpsTestConfig {
+struct OpsTestConfig {
   bool add_t = true;
   bool add_tout = false;
   // Only used for gpu_unary_ops_test.
   bool expect_buffer_reuse = true;
   bool expect_strictly_equal = false;
-  GpuOpsTestConfig ExpectStrictlyEqual() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig ExpectStrictlyEqual() {
+    OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
     return config;
   }
-  GpuOpsTestConfig NoBufferReuse() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig NoBufferReuse() {
+    OpsTestConfig config = *this;
     config.expect_buffer_reuse = false;
     return config;
   }
-  GpuOpsTestConfig AddTout() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig AddTout() {
+    OpsTestConfig config = *this;
     config.add_tout = true;
     return config;
   }
-  GpuOpsTestConfig NoT() {
-    GpuOpsTestConfig config = *this;
+  OpsTestConfig NoT() {
+    OpsTestConfig config = *this;
     config.add_t = false;
     return config;
   }
@@ -206,6 +204,23 @@ absl::InlinedVector<T, 10> DefaultInput() {
 }
 
 template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> ComplexInputFromValues(
+    const absl::InlinedVector<typename T::value_type, 10>& real,
+    const absl::InlinedVector<typename T::value_type, 10>& imag) {
+  using ElementType = typename T::value_type;
+  auto input = test::DefaultInput<ElementType>();
+  absl::InlinedVector<T, 10> complex_input;
+  CHECK_EQ(real.size(), imag.size());
+  for (size_t i = 0; i < real.size() && i < imag.size(); ++i) {
+    complex_input.emplace_back(real[i], imag[i]);
+  }
+  return complex_input;
+}
+
+template <typename T,
           std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, bool>({true, false, true, true, false});
@@ -214,4 +229,4 @@ absl::InlinedVector<T, 10> DefaultInput() {
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_

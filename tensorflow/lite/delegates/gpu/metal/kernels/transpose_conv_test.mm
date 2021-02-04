@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 
 @interface TransposeConvTest : XCTestCase
@@ -243,7 +242,7 @@ absl::Status TransposeConv4x4Test(TestExecutionEnvironment* env) {
   attr.padding.appended = HW(1, 1);
   attr.stride = HW(2, 2);
 
-  for (auto storage : {TensorStorageType::BUFFER}) {
+  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;

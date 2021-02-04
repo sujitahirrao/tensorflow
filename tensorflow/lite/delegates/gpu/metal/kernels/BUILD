@@ -20,7 +20,6 @@ cc_library(
     deps = [
         ":conv",
         ":depthwise_conv",
-        ":fully_connected",
         ":transpose_conv",
         ":winograd",
     ],
@@ -180,30 +179,12 @@ ios_unit_test(
     deps = [":elementwise_test_lib"],
 )
 
-cc_library(
-    name = "fully_connected",
-    srcs = ["fully_connected.cc"],
-    hdrs = ["fully_connected.h"],
-    deps = [
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 objc_library(
     name = "fully_connected_test_lib",
     testonly = 1,
     srcs = ["fully_connected_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
-        ":fully_connected",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
     ],
@@ -265,6 +246,29 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":max_unpooling_test_lib"],
+)
+
+objc_library(
+    name = "mean_stddev_normalization_test_lib",
+    testonly = 1,
+    srcs = ["mean_stddev_normalization_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "mean_stddev_normalization_test",
+    testonly = 1,
+    minimum_os_version = "11.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":mean_stddev_normalization_test_lib"],
 )
 
 objc_library(
@@ -349,7 +353,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
     ],
 )
 
@@ -688,6 +691,7 @@ objc_library(
         "fully_connected_test.mm",
         "lstm_test.mm",
         "max_unpooling_test.mm",
+        "mean_stddev_normalization_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",
@@ -722,6 +726,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
