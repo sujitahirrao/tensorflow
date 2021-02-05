@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -1555,7 +1556,32 @@ Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
-  return ThunkEmitter(this).HandleFft(fft);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(fft));
+  return EmitFftThunkFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitFftThunkFromMlir(MlirEmitterInput input) {
+  auto fft_op = mlir::cast<mlir::lmhlo::FftOp>(input.op);
+  const Shape operand_shape = TypeToShape(fft_op.operand().getType());
+  const Shape output_shape = TypeToShape(fft_op.output().getType());
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(operand_shape.layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout()));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                      GetAllocationSliceForMlir(fft_op.operand()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSliceForMlir(fft_op.output()));
+  TF_ASSIGN_OR_RETURN(xla::FftType fft_type, ConvertFftType(fft_op.fft_type()));
+  auto fft_length_values = fft_op.fft_length().getValues<int64>();
+  std::vector<int64> fft_length(fft_length_values.begin(),
+                                fft_length_values.end());
+  AddThunkToThunkSequence(
+      absl::make_unique<FftThunk>(input.thunk_info, fft_type, fft_length,
+                                  /*input_buffer=*/arg_slice,
+                                  /*output_buffer=*/dest_slice,
+                                  /*input_shape=*/operand_shape,
+                                  /*output_shape=*/output_shape));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
@@ -2940,10 +2966,31 @@ Status IrEmitterUnnested::HandlePartitionId(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
-  CollectivePermuteConfig config = GetCollectivePermuteConfig(hlo);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(hlo));
+  return EmitCollectivePermuteFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
+    MlirEmitterInput input) {
+  auto collective_permute_op =
+      mlir::cast<mlir::lmhlo::CollectivePermuteOp>(input.op);
+  if (collective_permute_op.channel_id())
+    return Unimplemented("collective permute with channel_id not implemented");
+  using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
+  TF_ASSIGN_OR_RETURN(
+      source_dest_pairs_t source_dest_pairs,
+      ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice source_slice,
+      GetAllocationSliceForMlir(collective_permute_op.operand()));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice result_slice,
+      GetAllocationSliceForMlir(collective_permute_op.output()));
+
   AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      GetThunkInfo(hlo), std::move(config),
-      GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo)));
+      input.thunk_info, std::move(source_dest_pairs), source_slice,
+      result_slice));
   return Status::OK();
 }
 
@@ -5762,6 +5809,9 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
   if (mlir::isa<mlir::lmhlo::SortOp>(mlir_input.op)) {
     return EmitSortFromMlir(mlir_input);
+  }
+  if (mlir::isa<mlir::lmhlo::CollectivePermuteOp>(mlir_input.op)) {
+    return EmitCollectivePermuteFromMlir(mlir_input);
   }
   LOG(FATAL)
       << "This function is for test only, and the op is not implemented: "

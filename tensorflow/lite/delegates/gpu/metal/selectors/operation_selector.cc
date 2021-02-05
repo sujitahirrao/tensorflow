@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/default_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/dw_convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
 
@@ -61,26 +61,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-
-std::unique_ptr<GPUOperation> SelectDepthWiseConv(
-    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& attr,
-    const GpuInfo& gpu_info) {
-  if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
-      CheckDepthWiseConv3x3Stride1x1Support(attr)) {
-    auto gpu_op = CreateDepthWiseConv3x3Stride1x1(op_def, attr);
-    return absl::make_unique<DepthWiseConv3x3Stride1x1>(std::move(gpu_op));
-  } else if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
-             CheckDepthWiseConv3x3Stride2Support(attr)) {
-    auto gpu_op = CreateDepthWiseConv3x3Stride2(op_def, attr);
-    return absl::make_unique<DepthWiseConv3x3Stride2>(std::move(gpu_op));
-  } else if (IsDepthwiseConv3x3Supported(attr)) {
-    return absl::make_unique<DepthwiseConv3x3>(
-        CreateDepthwiseConv3x3(gpu_info, op_def, attr));
-  } else {
-    auto gpu_op = CreateDepthWiseConvolution(op_def, attr);
-    return absl::make_unique<DepthWiseConvolution>(std::move(gpu_op));
-  }
-}
 
 absl::Status SelectConcat(const ConcatAttributes& attr,
                           const std::vector<int>& channels,
@@ -386,18 +366,17 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
               node.operation.attributes),
           gpu_info);
       break;
-    case OperationType::DEPTHWISE_CONVOLUTION:
+    case OperationType::DEPTHWISE_CONVOLUTION: {
       if (inputs.size() != 1) {
         return absl::UnimplementedError(
             "DepthWise Convolution does not support more than 1 runtime "
             "tensor");
       }
-      *gpu_op =
-          SelectDepthWiseConv(op_def,
-                              absl::any_cast<DepthwiseConvolution2DAttributes>(
-                                  node.operation.attributes),
-                              gpu_info);
-      break;
+      auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
+          node.operation.attributes);
+      *gpu_op = SelectDWConvolution(attr, gpu_info, op_def);
+      return absl::OkStatus();
+    }
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
