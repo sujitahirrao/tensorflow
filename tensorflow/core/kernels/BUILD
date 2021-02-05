@@ -798,7 +798,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
-        "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
+        "//conditions:default": ["@mkl_dnn_v1//:dnnl_single_threaded"],
     }),
 )
 
@@ -1670,7 +1670,6 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
-        "no_gpu",  # TODO(b/179419183): broken by cl/355688576.
     ],
     deps = [
         ":conv_ops",
