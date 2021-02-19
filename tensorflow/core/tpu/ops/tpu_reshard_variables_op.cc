@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-include "mlir/Pass/PassBase.td"
+#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/status.h"
 
-def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
-  let summary = "Prepare for XLA export";
+namespace tensorflow {
 
-  let description = [{
-    This pass transforms functions in preparation for exporting to XLA. This
+REGISTER_OP("TPUReshardVariables")
+    .Attr("N: int >= 0")
+    .Input("vars: N * resource")
+    .Input("new_format_key: string")
+    .Input("format_state_var: resource")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return ::tensorflow::shape_inference::UnknownShape(c);
+    });
 
-    * converts splat constants to constants and broadcasts to reduce size of
-      and speedup the creation of the generated proto during export.
-
-    Note: The result of this pass need not be a module in canonical form and
-    canonicalization may undo transformations.
-  }];
-
-  let constructor = "::mlir::mhlo::PrepareForExport()";
-}
+}  // namespace tensorflow
