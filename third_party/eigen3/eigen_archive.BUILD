@@ -1,6 +1,7 @@
 # Description:
 #   Eigen is a C++ template library for linear algebra: vectors,
 #   matrices, and related algorithms.
+# This is the BUILD file used for the @eigen_archive external repository.
 
 licenses([
     # Note: Although Eigen also includes GPL V3 and LGPL v2.1+ code, TensorFlow
@@ -43,7 +44,6 @@ cc_library(
         # code. We use it, but we do not rely on it, as evidenced above.
         "EIGEN_MPL2_ONLY",
         "EIGEN_MAX_ALIGN_BYTES=64",
-        "EIGEN_HAS_TYPE_TRAITS=0",
     ],
     includes = ["."],
     visibility = ["//visibility:public"],
