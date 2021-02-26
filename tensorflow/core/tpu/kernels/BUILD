@@ -35,6 +35,7 @@ tf_kernel_library(
         ":tpu_configuration_ops",
         ":tpu_execute_op",
         ":tpu_handle_to_key_op",
+        ":tpu_ordinal_selector_op",
         ":tpu_reshard_variables_op",
         ":transfer_ops",
     ],
@@ -949,4 +950,21 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_node_context",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_ordinal_selector_op",
+    srcs = ["tpu_ordinal_selector_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_ordinal_selector_interface",
+    hdrs = ["tpu_ordinal_selector_interface.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
 )
