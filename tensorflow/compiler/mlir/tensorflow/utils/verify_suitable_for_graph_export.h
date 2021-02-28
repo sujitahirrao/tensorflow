@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_VERIFY_SUITABLE_FOR_GRAPH_EXPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_VERIFY_SUITABLE_FOR_GRAPH_EXPORT_H_
 
-#include "mlir/IR/Dialect.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
-namespace mlir {
-namespace mhlo {
+namespace tensorflow {
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+// Returns whether all functions in module are of single tf_executor.graph and
+// each tf_executor.island in tf_executor.graph only has a single op.
+mlir::LogicalResult VerifyExportSuitable(mlir::ModuleOp module);
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_VERIFY_SUITABLE_FOR_GRAPH_EXPORT_H_
