@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -500,14 +499,6 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
       return s;
     }
   }
-  if (t.dtype() == DT_RESOURCE && ctx->serialize_data_tensors()) {
-    Status s = AddResourceHelper(ctx, t, output);
-    if (!errors::IsUnimplemented(s)) {
-      // Fall through to AddTensor if AsGraphDef is not implemented for this
-      // resource.
-      return s;
-    }
-  }
   return AddTensor(t, output);
 }
 
@@ -533,24 +524,11 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
   return Status::OK();
 }
 
-Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
-    SerializationContext* ctx, const Tensor& t, Node** output) {
-  const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
-  ResourceBase* resource;
-  TF_RETURN_IF_ERROR(ctx->resource_mgr()->Lookup(handle, &resource));
-  core::ScopedUnref unref(resource);
-  return resource->AsGraphDef(*builder(), output);
-}
-
 DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
   VLOG(2) << prefix() << " constructor";
-  traceme_metadata_ = strings::StrCat("id=", id_);
-  if (parent_) {
-    strings::StrAppend(&traceme_metadata_, ",parent_id=", parent_id_);
-  }
-  strings::StrAppend(&traceme_metadata_, ",shapes=");
+  strings::StrAppend(&traceme_metadata_, "shapes=");
   auto& shapes = output_shapes();
   for (int i = 0; i < shapes.size(); ++i) {
     if (i > 0) {
@@ -574,7 +552,11 @@ DatasetBaseIterator::~DatasetBaseIterator() {
 }
 
 string DatasetBaseIterator::BuildTraceMeName() {
-  string result = strings::StrCat(params_.prefix, "#", traceme_metadata_);
+  string result =
+      strings::StrCat(params_.prefix, "#", traceme_metadata_, ",id=", id_);
+  if (parent_) {
+    strings::StrAppend(&result, ",parent_id=", parent_id_);
+  }
   TraceMeMetadata metadata = GetTraceMeMetadata();
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);
