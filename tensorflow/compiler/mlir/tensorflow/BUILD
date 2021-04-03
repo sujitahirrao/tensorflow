@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -363,6 +363,7 @@ cc_library(
     ],
     hdrs = [
         "ir/tf_attributes.h",
+        "ir/tf_dialect.h",
     ],
     deps = [
         "@llvm-project//llvm:Support",
@@ -389,6 +390,7 @@ cc_library(
     cc_library(
         name = "tensorflow_" + target["name"],
         srcs = [
+            "ir/tf_dialect.h",
             "ir/tf_ops.h",
             "ir/tfrt_ops.h",
             "ir/tf_remaining_ops.h",
@@ -433,6 +435,7 @@ cc_library(
 cc_library(
     name = "tensorflow_remaining_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.h",
         "ir/tf_remaining_ops.h",
         "ir/tf_remaining_ops.cc",
@@ -447,6 +450,7 @@ cc_library(
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":serialize_mlir_module_utils",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
@@ -476,6 +480,7 @@ cc_library(
 cc_library(
     name = "tensorflow_tfrt_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.h",
         "ir/tfrt_ops.h",
         "ir/tfrt_ops.cc",
@@ -519,6 +524,7 @@ cc_library(
 cc_library(
     name = "tensorflow_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.cc",
         "ir/tf_ops.h",
     ],
@@ -592,6 +598,7 @@ cc_library(
         "ir/tf_types.cc",
     ],
     hdrs = [
+        "ir/tf_dialect.h",
         "ir/tf_types.h",
     ],
     textual_hdrs = [
@@ -616,6 +623,7 @@ cc_library(
     hdrs = [
         "dialect_registration.h",
         "ir/tf_device.h",
+        "ir/tf_dialect.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",
@@ -782,6 +790,19 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "fake_session",
+    srcs = ["utils/fake_session.cc"],
+    hdrs = ["utils/fake_session.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:threadpool_options",
+    ],
 )
 
 cc_library(
@@ -1018,6 +1039,7 @@ cc_library(
         ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
@@ -1062,6 +1084,7 @@ cc_library(
         "transforms/lower_tf_pass.cc",
     ],
     deps = [
+        ":fake_session",
         ":lift_variables_lib",
         ":lower_tf_lib",
         ":tensorflow",
@@ -1529,7 +1552,7 @@ cc_library(
     name = "tf_dialect_lib",
     deps = [
         ":tf_dialect_passes",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -2001,7 +2024,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

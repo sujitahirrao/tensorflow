@@ -10,7 +10,6 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_gen_options_header",
 )
 
 # buildifier: disable=same-origin-load
@@ -23,7 +22,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -39,7 +37,7 @@ package(
         "//tensorflow/core:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Export all header files for which we do not yet provide a dedicated build
@@ -56,6 +54,7 @@ exports_files(
         "device_base.h",
         "device_factory.h",
         "function.h",
+        "function_handle_cache.h",
         "graph_def_util.h",
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
@@ -129,7 +128,6 @@ exports_files(
         "node_def.proto",
         "op_def.proto",
         "reader_base.proto",
-        "remote_fused_graph_execute_info.proto",
         "resource_handle.proto",
         "step_stats.proto",
         "summary.proto",
@@ -157,8 +155,6 @@ exports_files(
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
-        "registration_options",
-        "selective_registration.h",
         "shape_inference.h",
     ],
     visibility = ["//tensorflow/core:__subpackages__"],
@@ -187,6 +183,7 @@ filegroup(
         "device_base.h",
         "device_factory.h",
         "function.h",
+        "function_handle_cache.h",
         "graph_def_util.h",
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
@@ -217,7 +214,6 @@ filegroup(
         "reader_op_kernel.h",
         "register_types.h",
         "register_types_traits.h",
-        "registration_options.h",
         "rendezvous.h",
         "resource_handle.h",
         "resource_mgr.h",
@@ -225,7 +221,6 @@ filegroup(
         "resource_var.h",
         "run_handler.h",
         "run_handler_util.h",
-        "selective_registration.h",
         "session_state.h",
         "shape_inference.h",
         "shared_ptr_variant.h",
@@ -248,6 +243,8 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.h",
         "versions.h",
+        "//tensorflow/core/framework/registration:options.h",
+        "//tensorflow/core/framework/registration:registration.h",
     ],
 )
 
@@ -261,6 +258,7 @@ filegroup(
         "device_base.cc",
         "device_factory.cc",
         "function.cc",
+        "function_handle_cache.cc",
         "graph_def_util.cc",
         "graph_to_functiondef.cc",
         "kernel_def_builder.cc",
@@ -356,6 +354,8 @@ filegroup(
         "device_factory.h",
         "function.cc",
         "function.h",
+        "function_handle_cache.cc",
+        "function_handle_cache.h",
         "graph_def_util.cc",
         "graph_def_util.h",
         "graph_to_functiondef.cc",
@@ -401,7 +401,6 @@ filegroup(
         "reader_interface.h",
         "reader_op_kernel.h",
         "register_types_traits.h",
-        "registration_options.h",
         "rendezvous.cc",
         "rendezvous.h",
         "resource_mgr.cc",
@@ -413,7 +412,6 @@ filegroup(
         "run_handler.h",
         "run_handler_util.cc",
         "run_handler_util.h",
-        "selective_registration.h",
         "session_state.h",
         "shape_inference.cc",
         "shape_inference.h",
@@ -426,6 +424,8 @@ filegroup(
         "thread_factory.h",
         "versions.cc",
         "versions.h",
+        "//tensorflow/core/framework/registration:options.h",
+        "//tensorflow/core/framework/registration:registration.h",
     ],
 )
 
@@ -978,24 +978,6 @@ cc_library(
     ],
 )
 
-tf_gen_options_header(
-    name = "gen_registration_options",
-    build_settings = {
-        "//tensorflow:enable_registration_v2": "REGISTRATION_V2",
-    },
-    output_header = "registration_options.h",
-    template = "registration_options.h.tpl",
-)
-
-cc_library(
-    name = "selective_registration",
-    hdrs = [
-        "registration_options.h",
-        "selective_registration.h",
-    ],
-    deps = tf_selective_registration_deps(),
-)
-
 cc_library(
     name = "op",
     srcs = ["op.cc"],
@@ -1003,7 +985,7 @@ cc_library(
     deps = [
         ":op_def_builder",
         ":op_def_util",
-        ":selective_registration",
+        "//tensorflow/core/framework/registration",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:map_util",
@@ -1193,7 +1175,6 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
-        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",
@@ -1534,25 +1515,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "remote_fused_graph_execute_info_proto",
-    srcs = ["remote_fused_graph_execute_info.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    protodeps = [
-        ":attr_value_proto",
-        ":function_proto",
-        ":graph_proto",
-        ":node_def_proto",
-        ":op_def_proto",
-        ":resource_handle_proto",
-        ":tensor_proto",
-        ":tensor_shape_proto",
-        ":types_proto",
-        ":versions_proto",
-    ],
-)
-
-tf_proto_library(
     name = "tensor_proto",
     srcs = ["tensor.proto"],
     cc_api_version = 2,
@@ -1683,7 +1645,6 @@ tf_proto_library(
         ":node_def_proto",
         ":op_def_proto",
         ":reader_base_proto",
-        ":remote_fused_graph_execute_info_proto",
         ":resource_handle_proto",
         ":step_stats_proto",
         ":summary_proto",

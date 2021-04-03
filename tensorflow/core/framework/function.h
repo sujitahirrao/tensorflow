@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -738,8 +738,7 @@ class FunctionLibraryRuntime {
     // Graph. Otherwise, the unoptimized function Graph will be returned.
     bool include_optimized_graph_in_debug_string = false;
 
-    // If true, the function library runtime will use a cache to enable re-use
-    // of function instantiations.
+    // If true, the function library runtime cache the function instantiation.
     bool use_function_cache = false;
   };
   typedef uint64 Handle;

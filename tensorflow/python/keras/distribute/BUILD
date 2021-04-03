@@ -14,7 +14,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -165,9 +165,10 @@ distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
     main = "checkpointing_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
+    # TODO(b/182978757)
+    # tags = [
+    #     "multi_and_single_gpu",
+    # ],
     deps = [
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
@@ -689,7 +690,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -739,7 +739,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -855,16 +854,53 @@ distribute_py_test(
     ],
 )
 
-tf_py_test(
+distribute_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
-    shard_count = 1,
+    shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
     tags = [
-        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
+        "multi_and_single_gpu",
     ],
     deps = [
+        ":multi_worker_testing_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:dataset_creator",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "dataset_creator_model_fit_test",
+    srcs = ["dataset_creator_model_fit_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
+    full_precision = True,
+    main = "dataset_creator_model_fit_test.py",
+    shard_count = 50,
+    tags = [
+        "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
+    ],
+    deps = [
+        ":multi_worker_testing_utils",
+        ":strategy_combinations",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
@@ -894,7 +930,6 @@ tf_py_test(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

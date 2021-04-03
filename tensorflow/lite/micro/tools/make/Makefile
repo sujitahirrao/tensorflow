@@ -236,6 +236,14 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # to bypass this check and allow for deeper directory structures.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
+
+# Image recognition experimental uses uint8 quantization and is no longer
+# supported (See #44912 for more details). We should consider deleting
+# the image_recognition_experimental example.
+EXCLUDED_EXAMPLE_TESTS := \
+  tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
+MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
@@ -267,6 +275,7 @@ tensorflow/lite/micro/kernels/circular_buffer_test.cc \
 tensorflow/lite/micro/kernels/comparisons_test.cc \
 tensorflow/lite/micro/kernels/concatenation_test.cc \
 tensorflow/lite/micro/kernels/conv_test.cc \
+tensorflow/lite/micro/kernels/cumsum_test.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
@@ -276,9 +285,11 @@ tensorflow/lite/micro/kernels/exp_test.cc \
 tensorflow/lite/micro/kernels/expand_dims_test.cc \
 tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
+tensorflow/lite/micro/kernels/floor_div_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
+tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
 tensorflow/lite/micro/kernels/leaky_relu_test.cc \
 tensorflow/lite/micro/kernels/logical_test.cc \
 tensorflow/lite/micro/kernels/logistic_test.cc \
@@ -324,6 +335,7 @@ tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
 tensorflow/lite/micro/kernels/conv_common.cc \
+tensorflow/lite/micro/kernels/cumsum.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_common.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
@@ -335,12 +347,14 @@ tensorflow/lite/micro/kernels/exp.cc \
 tensorflow/lite/micro/kernels/expand_dims.cc \
 tensorflow/lite/micro/kernels/fill.cc \
 tensorflow/lite/micro/kernels/floor.cc \
+tensorflow/lite/micro/kernels/floor_div.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
 tensorflow/lite/micro/kernels/l2norm.cc \
+tensorflow/lite/micro/kernels/l2_pool_2d.cc \
 tensorflow/lite/micro/kernels/leaky_relu.cc \
 tensorflow/lite/micro/kernels/logical.cc \
 tensorflow/lite/micro/kernels/logistic.cc \
@@ -417,6 +431,7 @@ tensorflow/lite/kernels/internal/reference/ceil.h \
 tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/concatenation.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
+tensorflow/lite/kernels/internal/reference/cumsum.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
@@ -424,6 +439,7 @@ tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
+tensorflow/lite/kernels/internal/reference/floor_div.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
@@ -588,6 +604,14 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
 endif
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # Check that OPTIMIZED_KERNEL_DIR is valid to avoid unexpected fallback to
+	# reference kernels. See http://b/183546742 for more context.
+  PATH_TO_OPTIMIZED_KERNELS := tensorflow/lite/micro/kernels/$(OPTIMIZED_KERNEL_DIR)
+  RESULT := $(shell $(MAKEFILE_DIR)/check_optimized_kernel_dir.sh $(PATH_TO_OPTIMIZED_KERNELS))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Incorrect OPTIMIZED_KERNEL_DIR: $(RESULT))
+  endif
+
   include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
   # Specialize for the optimized kernels
   MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
@@ -802,6 +826,8 @@ $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET)
 
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+
+
 
 ifeq ($(TARGET_SPECIFIC_MAKE_TEST),0)
 test: $(MICROLITE_TEST_TARGETS)
