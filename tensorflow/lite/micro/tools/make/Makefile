@@ -286,6 +286,7 @@ tensorflow/lite/micro/kernels/expand_dims_test.cc \
 tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
 tensorflow/lite/micro/kernels/floor_div_test.cc \
+tensorflow/lite/micro/kernels/floor_mod_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
@@ -293,6 +294,7 @@ tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
 tensorflow/lite/micro/kernels/leaky_relu_test.cc \
 tensorflow/lite/micro/kernels/logical_test.cc \
 tensorflow/lite/micro/kernels/logistic_test.cc \
+tensorflow/lite/micro/kernels/log_softmax_test.cc \
 tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
 tensorflow/lite/micro/kernels/mul_test.cc \
 tensorflow/lite/micro/kernels/neg_test.cc \
@@ -348,6 +350,7 @@ tensorflow/lite/micro/kernels/expand_dims.cc \
 tensorflow/lite/micro/kernels/fill.cc \
 tensorflow/lite/micro/kernels/floor.cc \
 tensorflow/lite/micro/kernels/floor_div.cc \
+tensorflow/lite/micro/kernels/floor_mod.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
@@ -358,6 +361,7 @@ tensorflow/lite/micro/kernels/l2_pool_2d.cc \
 tensorflow/lite/micro/kernels/leaky_relu.cc \
 tensorflow/lite/micro/kernels/logical.cc \
 tensorflow/lite/micro/kernels/logistic.cc \
+tensorflow/lite/micro/kernels/log_softmax.cc \
 tensorflow/lite/micro/kernels/maximum_minimum.cc \
 tensorflow/lite/micro/kernels/mul.cc \
 tensorflow/lite/micro/kernels/neg.cc \
@@ -440,6 +444,7 @@ tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/floor_div.h \
+tensorflow/lite/kernels/internal/reference/floor_mod.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
@@ -455,6 +460,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/leaky_relu.h \
+tensorflow/lite/kernels/internal/reference/log_softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \

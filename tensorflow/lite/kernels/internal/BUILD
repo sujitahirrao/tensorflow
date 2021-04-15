@@ -497,6 +497,7 @@ cc_library(
         "reference/l2normalization.h",
         "reference/leaky_relu.h",
         "reference/logistic.h",
+        "reference/log_softmax.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -595,6 +596,7 @@ cc_library(
         "reference/l2normalization.h",
         "reference/leaky_relu.h",
         "reference/legacy_reference_ops.h",
+        "reference/log_softmax.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -809,7 +811,10 @@ cc_library(
         ): [":neon_tensor_utils"],
         (
             ":x86_any",
-        ): [":sse_tensor_utils"],
+        ): [
+            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
+            ":sse_tensor_utils",
+        ],
         (
             "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",
