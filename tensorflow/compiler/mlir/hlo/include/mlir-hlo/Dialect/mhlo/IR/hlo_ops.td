@@ -646,6 +646,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   }];
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
@@ -1068,6 +1069,7 @@ def HLO_MapOp: HLO_Op<"map",
   );
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
+  let hasFolder = 1;
   let hasCustomHLOConverter = 1;
 }
 

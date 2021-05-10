@@ -277,7 +277,6 @@ def MatchHardSwishPattern2 : Pat<
 
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
 // incorrect placement in the quantization aware training.
-// TODO(b/149735743): We should make the placement automatically.
 def MatchHardSwishQuantized : Pat<
   (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
     (TFL_MulOp
@@ -697,6 +696,18 @@ def OptimizePow2ToSquare : Pat<
   (TFL_PowOp $input,
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
   (TFL_MulOp $input, $input, TFL_AF_None)>;
+
+// Optimize X^(1/2) to √X
+def OptimizePow2ToSqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.5f">)),
+  (TFL_SqrtOp $input)>;
+
+// Optimize X^(-1/2) to 1/√X == rsqrt(x)
+def OptimizePow2ToRsqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "-0.5f">)),
+  (TFL_RsqrtOp $input)>;
 
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("

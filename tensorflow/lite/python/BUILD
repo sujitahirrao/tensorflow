@@ -1,9 +1,13 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
+load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//tensorflow:internal",
+        "//third_party/tflite_micro:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -41,10 +45,6 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "noasan",  # TODO(b/137568139): enable after this is fixed.
-        "nomsan",  # TODO(b/137568139): enable after this is fixed.
-    ],
     deps = [
         ":interpreter",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
@@ -179,7 +179,6 @@ py_library(
         ":metrics",
         ":op_hint",
         ":util",
-        "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
@@ -272,9 +271,7 @@ py_library(
     name = "util",
     srcs = ["util.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = internal_visibility_allowlist(),
     deps = [
         ":op_hint",
         ":schema_py",
@@ -486,6 +483,7 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_interface",
+        "//tensorflow/lite/python/metrics_wrapper:_pywrap_tensorflow_lite_metrics_wrapper",
         "//tensorflow/python/eager:monitoring",
     ],
 )
@@ -494,6 +492,7 @@ py_test(
     name = "metrics_nonportable_test",
     srcs = ["metrics_nonportable_test.py"],
     python_version = "PY3",
+    tags = ["no_oss"],
     visibility = ["//visibility:public"],
     deps = [
         ":lite",

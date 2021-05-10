@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -225,6 +226,84 @@ class RoundTest(test_util.TensorFlowTestCase):
         y_tf_np = self.evaluate(y_tf)
         y_np = np.round(x_np)
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MatMulTest(test_util.TensorFlowTestCase):
+  """Test for matmul."""
+
+  SUPPORTED_DTYPES = [
+      dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+      dtypes.int64, dtypes.bfloat16, dtypes.complex64, dtypes.complex128
+  ]
+
+  def testMatMul2D(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      a = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+      b = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=dtype)
+      c = math_ops.matmul(a, b)
+      c_np = constant_op.constant([[58, 64], [139, 154]],
+                                  shape=(2, 2),
+                                  dtype=dtype)
+      self.assertAllClose(c, c_np, atol=1e-2)
+
+  def testBatchMatMul(self):
+    for dtype in self.SUPPORTED_DTYPES:
+      a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=dtype)
+      b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=dtype)
+      c = math_ops.matmul(a, b)
+      c_np = constant_op.constant(
+          [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
+          shape=[2, 2, 2],
+          dtype=dtype)
+      self.assertAllClose(c, c_np, atol=1e-2)
+
+  def testUnsupportedtypeMatmul(self):
+    a = constant_op.constant(
+        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.int8)
+    b = constant_op.constant(
+        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    with self.assertRaisesRegex((TypeError, errors.InvalidArgumentError),
+                                "list of allowed values:"):
+      math_ops.matmul(a, b)
+
+  def testInt8Matmul(self):
+    a = constant_op.constant(
+        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.int8)
+    b = constant_op.constant(
+        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    c_np = constant_op.constant(
+        [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
+        shape=[2, 2, 2],
+        dtype=dtypes.int32)
+    c = math_ops.matmul(a, b, output_type=dtypes.int32)
+    self.assertAllEqual(c, c_np)
+
+  def testMixPrecMatmul(self):
+    a = constant_op.constant(
+        np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.bfloat16)
+    b = constant_op.constant(
+        np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+    c_np = constant_op.constant(
+        [[[94, 100], [229, 244]], [[508, 532], [697, 730]]],
+        shape=[2, 2, 2],
+        dtype=dtypes.bfloat16)
+    c = math_ops.matmul(a, b, output_type=dtypes.bfloat16)
+    self.assertAllClose(c, c_np, atol=1e-2)
+
+  def testInvalidOutputTypeMatmul(self):
+    for dtype in [dtypes.int8, dtypes.bfloat16]:
+      a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=dtype)
+      b = constant_op.constant(
+          np.arange(13, 25), shape=[2, 3, 2], dtype=dtypes.int8)
+      if context.executing_eagerly():
+        with self.assertRaisesRegex(errors.NotFoundError,
+                                    "Could not find device for node:"):
+          math_ops.matmul(a, b, output_type=dtypes.float32)
+      else:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "No OpKernel was registered to support Op"):
+          self.evaluate(math_ops.matmul(a, b, output_type=dtypes.float32))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -596,19 +675,31 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class DivNoNanTest(test_util.TensorFlowTestCase):
+class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def testBasic(self):
-    for dtype in [np.float32, np.float64]:
-      nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
-      divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def testBasic(self, dtype):
+    nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
+    divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
 
-      np_result = np.true_divide(nums, divs)
-      np_result[:, divs[0] == 0] = 0
+    np_result = np.true_divide(nums, divs)
+    np_result[:, divs[0] == 0] = 0
 
-      with test_util.use_gpu():
-        tf_result = math_ops.div_no_nan(nums, divs)
-        self.assertAllClose(tf_result, np_result)
+    with test_util.use_gpu():
+      tf_result = math_ops.div_no_nan(nums, divs)
+      self.assertAllClose(tf_result, np_result)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def testSmall(self, dtype):
+    # Choose values whose squared magnitude underflows to zero/subnormal.
+    zero = constant_op.constant([0, 0, 0, 0], dtype=dtype)
+    divs = constant_op.constant([1e-25, -1e-20, 1e-165, -1e-160], dtype=dtype)
+    tf_result = math_ops.div_no_nan(zero, divs)
+
+    # Results should always be exactly zero.
+    self.assertAllEqual(tf_result, zero)
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -62,8 +62,6 @@ upper_tabs:
         path: /lite/guide
 
       - heading: "Get started"
-      - title: "Overview"
-        path: /lite/guide/get_started
       - title: "Android quickstart"
         path: /lite/guide/android
       - title: "iOS quickstart"
@@ -236,8 +234,11 @@ upper_tabs:
         path: /lite/api_docs/
       - heading: "Python"
       - include: /lite/api_docs/python/tf/lite/_toc.yaml
+      - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
+      - heading: "Swift"
+      - include: /lite/api_docs/swift/_toc.yaml
       - heading: "C++"
       - title: "Overview"
         path: /lite/api_docs/cc/
