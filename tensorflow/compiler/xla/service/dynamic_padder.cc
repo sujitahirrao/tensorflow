@@ -135,6 +135,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kReverse:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kBroadcast:
     case HloOpcode::kTranspose:
     case HloOpcode::kSort:

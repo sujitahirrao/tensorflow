@@ -18,6 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -71,6 +73,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
     pm.addPass(mlir::createLowerToCFGPass());
+    pm.addPass(mlir::createMemRefToLLVMPass());
     pm.addPass(mlir::createLowerToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));
   }

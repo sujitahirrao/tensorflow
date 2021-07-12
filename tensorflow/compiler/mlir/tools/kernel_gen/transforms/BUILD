@@ -1,4 +1,4 @@
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -23,6 +23,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:StandardOps",
@@ -64,10 +65,16 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "kernel_gen_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [("-gen-pass-decls -name KernelGen", "kernel_gen_passes.h.inc")],
+    tbl_outs = [(
+        [
+            "-gen-pass-decls",
+            "-name=KernelGen",
+        ],
+        "kernel_gen_passes.h.inc",
+    )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -78,13 +85,16 @@ cc_library(
     srcs = [
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
+        "convert_to_signless_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
         "kernel_lowering_passes.cc",
+        "lower_index_cast_pass.cc",
         "map_parallel_loops_to_gpu.cc",
         "parallel_loops_to_sequential.cc",
+        "rewrite_tf_framework_assert.cc",
         "same_shape_propagation.cc",
         "shape_simplification.cc",
         "shape_to_descriptors_pass.cc",
@@ -102,7 +112,7 @@ cc_library(
         ":tf_framework_legalize_to_llvm",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -121,9 +131,11 @@ cc_library(
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:SCFDialect",
@@ -139,9 +151,11 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:VectorToLLVM",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:type_conversion",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",

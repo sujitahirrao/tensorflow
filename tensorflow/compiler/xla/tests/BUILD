@@ -768,6 +768,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1507,6 +1508,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -2032,6 +2034,9 @@ xla_test(
             "no_oss",
             "notap",
         ],
+        "cpu": [
+            "notsan",
+        ],
     },
     backends = [
         "gpu",
@@ -2162,8 +2167,8 @@ xla_test(
 )
 
 xla_test(
-    name = "dynamism_inference_test",
-    srcs = ["dynamism_inference_test.cc"],
+    name = "value_inference_test",
+    srcs = ["value_inference_test.cc"],
     deps = [
         ":literal_test_util",
         ":test_macros_header",
@@ -2734,6 +2739,8 @@ xla_test(
 xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
+    real_hardware_only = True,
+    shard_count = 3,
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
@@ -2749,6 +2756,7 @@ xla_test(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -2765,7 +2773,6 @@ xla_test(
     srcs = ["cholesky_test.cc"],
     real_hardware_only = True,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [

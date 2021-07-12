@@ -72,6 +72,10 @@ option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  set(_TFLITE_ENABLE_RUY ON)
+endif()
 set(_TFLITE_ENABLE_NNAPI "${TFLITE_ENABLE_NNAPI}")
 if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
   set(_TFLITE_ENABLE_NNAPI OFF)
@@ -161,6 +165,23 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   # support compilation with MSVC2015.
   if(MSVC)
     list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "/bigobj")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+      message("Disabling MSVC /O2 optimization for Win32")
+      set(CompFlags
+        CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL
+        CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_MINSIZEREL
+        CMAKE_C_FLAGS_RELWITHDEBINFO
+      )
+      foreach (CompFlag ${CompFlags})
+        string(REGEX REPLACE "(\/Ob. )" "" ${CompFlag} "${${CompFlag}}")
+        string(REPLACE "/O2" "/O1" ${CompFlag} "${${CompFlag}}")
+        list(REMOVE_DUPLICATES ${CompFlag})
+        set(${CompFlag} "${${CompFlag}}" CACHE INTERNAL "")
+      endforeach()
+    endif()
   elseif(CMAKE_COMPILER_IS_GNUCXX)
     list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-Wa,-mbig-obj")
   endif()
@@ -298,6 +319,7 @@ else()
   )
 endif()
 if(TFLITE_ENABLE_XNNPACK)
+  find_package(fp16_headers REQUIRED)
   find_package(xnnpack REQUIRED)
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
@@ -323,7 +345,8 @@ populate_tflite_source_vars("experimental/ruy/profiler"
   TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS
   FILTER ".*(test|test_instrumented_library)\\.(cc|h)$"
 )
-if(TFLITE_ENABLE_RUY)
+if(_TFLITE_ENABLE_RUY)
+  message(STATUS "RUY is enabled.")
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_WITH_RUY")
 endif()
 populate_tflite_source_vars("kernels"
@@ -412,6 +435,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers
     gemmlowp
     ruy
+    ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
 

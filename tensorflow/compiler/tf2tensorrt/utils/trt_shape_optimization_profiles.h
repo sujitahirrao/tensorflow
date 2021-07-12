@@ -82,7 +82,7 @@ struct OptimizationProfileConfig {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
-      const nvinfer1::ITensor* input = network->getInput(i);
+      const ITensorProxyPtr input = network->getInput(i);
       const char* name = input->getName();
       if (input->isShapeTensor()) {
         int idx = i + n_inputs;
@@ -284,6 +284,8 @@ class TrtShapeOptimizationProfile {
   void ImplicitBatchModeCompatibleStrategy(
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
   void OptimalStrategy(
+      const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
+  Status RangeStrategy(
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
 };
 

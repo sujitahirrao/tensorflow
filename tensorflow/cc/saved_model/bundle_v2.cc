@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
-
+#include "tensorflow/cc/experimental/libexport/metrics.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -24,8 +24,12 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 
 namespace tensorflow {
-
 namespace {
+
+namespace metrics = libexport::metrics;
+
+// `tensorflow::SavedModelV2Bundle::Load` API label.
+constexpr char kCCLoadBundleV2Label[] = "cc_load_bundle_v2";
 
 Status ReadSavedModelProto(const string& export_dir,
                            SavedModel* saved_model_proto) {
@@ -95,6 +99,7 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
 
 Status SavedModelV2Bundle::Load(const std::string& export_dir,
                                 SavedModelV2Bundle* const bundle) {
+  metrics::ReadApi(kCCLoadBundleV2Label, "2").IncrementBy(1);
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
 
@@ -134,7 +139,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
     TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
         bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
   }
-
+  metrics::Read().IncrementBy(1);
   return Status::OK();
 }
 

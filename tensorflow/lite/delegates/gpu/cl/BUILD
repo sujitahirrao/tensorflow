@@ -3,7 +3,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "if_google")
+load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -396,6 +396,7 @@ cc_library(
         ":environment",
         ":gpu_object",
         ":opencl_wrapper",
+        ":program_cache",
         ":recordable_queue_builder",
         ":serialization_cc_fbs",
         ":tensor",
@@ -518,7 +519,7 @@ flatbuffer_cc_library(
     srcs = ["serialization.fbs"],
     flatc_args = [
         "--scoped-enums",
-        "-I ./",
+        "-I " + workspace_root,
     ],
     includes = [
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",

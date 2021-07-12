@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -52,9 +53,13 @@ namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
 
 namespace test_utils {
-class TestDelegate;  // Class for friend declarations.
+class TestDelegation;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
+
+namespace interpreter_wrapper {
+class InterpreterWrapper;  // Class for friend declarations.
+}  // namespace interpreter_wrapper
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -124,11 +129,6 @@ class Interpreter {
   /// Each index is bound check and this modifies the consistent_ flag of the
   /// interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
-
-  /// Ensure the internal node storage memory allocates at least `count`
-  /// spots for node. NOTE, this doesn't actually add operators. This is an
-  /// efficiency optimization that is subject to change.
-  void ReserveNodes(int count);
 
   /// Adds a node with the given parameters and returns the index of the new
   /// node in `node_index` (optionally). Interpreter will take ownership of
@@ -242,12 +242,6 @@ class Interpreter {
     return primary_subgraph().execution_plan();
   }
 
-#ifndef DOXYGEN_
-  /// WARNING: Experimental interface, subject to change
-  /// Overrides execution plan. This bounds checks indices sent in.
-  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
-#endif  // DOXYGEN_SKIP
-
   /// Get a mutable tensor data structure.
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
@@ -305,6 +299,20 @@ class Interpreter {
   }
 
   /// WARNING: Experimental interface, subject to change
+  // Return the subgraph index that corresponds to a SignatureDef, defined by
+  // 'signature_method_name'.
+  // If invalid name passed, -1 will be returned.
+  int GetSubgraphIndexFromSignatureDefName(
+      const char* signature_method_name) const {
+    for (const auto& signature : signature_defs_) {
+      if (signature.method_name == signature_method_name) {
+        return signature.subgraph_index;
+      }
+    }
+    return -1;
+  }
+
+  /// WARNING: Experimental interface, subject to change
   /// Returns the mapping of inputs to tensor index in the signature
   /// specified through 'method_name'.
   /// If invalid name passed, an empty list will be returned.
@@ -359,8 +367,8 @@ class Interpreter {
   /// be between 0 and inputs().size().
   TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
 
-  /// Return an immutable pointerto the given input tensor. The given index must
-  /// be between 0 and inputs().size().
+  /// Return an immutable pointer to the given input tensor. The given index
+  /// must be between 0 and inputs().size().
   const TfLiteTensor* input_tensor(size_t index) const {
     return tensor(inputs()[index]);
   }
@@ -574,13 +582,13 @@ class Interpreter {
   static constexpr int kTensorsCapacityHeadroom = 16;
 
   /// Set if buffer handle output is allowed.
-  //
+  ///
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
   /// texture), it can set this flag to false, so Interpreter won't copy the
-  /// data from buffer handle to CPU memory. WARNING: This is an experimental
-  /// API and subject to change.
+  /// data from buffer handle to CPU memory.
+  /// WARNING: This is an experimental API and subject to change.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
@@ -645,11 +653,18 @@ class Interpreter {
 
   /// Get a pointer to a subgraph if in bounds.
   /// WARNING: This is an experimental API and subject to change.
-  Subgraph* subgraph(int subgraph_index) {
+  const Subgraph* subgraph(int subgraph_index) const {
     if (subgraph_index < 0 ||
-        static_cast<size_t>(subgraph_index) >= subgraphs_size())
+        static_cast<size_t>(subgraph_index) >= subgraphs_size()) {
       return nullptr;
-    return &*subgraphs_[subgraph_index];
+    }
+    return subgraphs_[subgraph_index].get();
+  }
+
+  /// WARNING: This is an experimental API and subject to change.
+  Subgraph* subgraph(int subgraph_index) {
+    return const_cast<Subgraph*>(
+        static_cast<const Interpreter*>(this)->subgraph(subgraph_index));
   }
 
   /// WARNING: Experimental interface, subject to change
@@ -679,11 +694,14 @@ class Interpreter {
     std::string method_name;
     // The key of this SignatureDef in the SavedModel signature def map.
     std::string signature_def_key;
+    // The subgraph index of the signature in the model.
+    uint32_t subgraph_index;
   };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
-  friend class tflite::delegates::test_utils::TestDelegate;
+  friend class tflite::delegates::test_utils::TestDelegation;
+  friend class tflite::interpreter_wrapper::InterpreterWrapper;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -709,6 +727,10 @@ class Interpreter {
     }
     return -1;
   }
+
+  // Overrides execution plan. This bounds checks indices sent in.
+  // Note: Only used during initialization.
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
   // Sets the profiler to all subgraphs.
   void SetSubgraphProfiler();
@@ -773,6 +795,15 @@ class Interpreter {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
+
+  // A map of resource Ids. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap resource_ids_;
+
+  // A map of intialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not. Owned by interpreter and shared by
+  // multiple subgraphs.
+  resource::InitializationStatusMap initialization_status_map_;
 
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or

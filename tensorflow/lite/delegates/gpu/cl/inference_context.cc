@@ -18,9 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -193,8 +195,19 @@ absl::Status InferenceContext::InitFromGraph(
       node.cl_operation.MoveObjectRefsFromCLToGeneric();
       node.cl_operation.SyncScalarValues();
     }
+    const auto inputs = graph.inputs();
+    const auto outputs = graph.outputs();
+    std::vector<int64_t> in_refs(inputs.size());
+    std::vector<int64_t> out_refs(outputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+      in_refs[i] = inputs[i]->tensor.ref;
+    }
+    for (int i = 0; i < outputs.size(); ++i) {
+      out_refs[i] = outputs[i]->tensor.ref;
+    }
     flatbuffers::FlatBufferBuilder builder;
-    auto encoded_fb = Encode(*this, &builder);
+    auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
+                             in_refs, out_refs, &builder);
     data::FinishInferenceContextBuffer(builder, encoded_fb);
     serialized_model->resize(builder.GetSize());
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
@@ -215,7 +228,8 @@ absl::Status InferenceContext::RestoreDeserialized(
     return absl::DataLossError("Deserialization failed.");
   }
   auto decoded_fb = data::GetInferenceContext(serialized_model.data());
-  RETURN_IF_ERROR(Decode(decoded_fb, this));
+  RETURN_IF_ERROR(Decode(env->context(), *env->GetDevicePtr(),
+                         env->program_cache(), decoded_fb, this));
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -227,7 +241,7 @@ absl::Status InferenceContext::RestoreDeserialized(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
   BindMemoryToOperations();
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.CompileDeserialized(creation_context));
+    RETURN_IF_ERROR(node.cl_operation.RestoreDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
   InitRecordableQueue(env);
@@ -265,15 +279,6 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   const auto outputs = graph.outputs();
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
-  }
-
-  in_refs_.resize(inputs.size());
-  out_refs_.resize(outputs.size());
-  for (int i = 0; i < inputs.size(); ++i) {
-    in_refs_[i] = inputs[i]->tensor.ref;
-  }
-  for (int i = 0; i < outputs.size(); ++i) {
-    out_refs_[i] = outputs[i]->tensor.ref;
   }
 }
 
@@ -802,7 +807,7 @@ absl::Status RunGraphTransforms(GraphFloat32* graph) {
   auto merge_padding_transform = NewMergePaddingWithAdd();
   auto add_bias_transform = NewAddBias();
   auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
-  ModelTransformer transformer(graph, /*reporter=*/nullptr);
+  ModelTransformer transformer(graph);
   if (!transformer.Apply("add_bias", add_bias_transform.get())) {
     return absl::InternalError("Invalid add_bias transform");
   }

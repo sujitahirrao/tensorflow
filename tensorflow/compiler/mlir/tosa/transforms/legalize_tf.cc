@@ -81,6 +81,7 @@ DECL_CONVERT_OP(RealDiv);
 DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(AvgPool);
 DECL_CONVERT_OP(MaxPool);
+DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Rank);
 DECL_CONVERT_OP(Shape);
@@ -105,6 +106,7 @@ DECL_CONVERT_OP(FusedBatchNormV3);
 DECL_CONVERT_OP(BiasAdd);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
+DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(Transpose);
 DECL_CONVERT_OP(Tile);
@@ -135,6 +137,7 @@ DECL_CONVERT_OP(FakeQuantWithMinMaxVars);
 DECL_CONVERT_OP(LeftShift);
 DECL_CONVERT_OP(RightShift);
 DECL_CONVERT_OP(OneHot);
+DECL_CONVERT_OP(BatchMatMulV2);
 #undef DECL_CONVERT_OP
 
 LogicalResult ConvertTFReluOp::matchAndRewrite(
@@ -146,16 +149,11 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  if (output_type.getElementType().isa<mlir::FloatType>()) {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu_op.features(), rewriter.getI64IntegerAttr(0),
-        rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu_op.features(),
-        rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-        rewriter.getF32FloatAttr(0.0f));
-  }
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, tf_relu_op.features(), rewriter.getI64IntegerAttr(0),
+      rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+      rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(std::numeric_limits<float>::max()));
   return success();
 }
 
@@ -168,15 +166,10 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  if (output_type.getElementType().isa<mlir::FloatType>()) {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu6_op.features(), rewriter.getI64IntegerAttr(0),
-        rewriter.getF32FloatAttr(6.0f));
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::ReluNOp>(
-        op, output_type, tf_relu6_op.features(), rewriter.getI64IntegerAttr(6),
-        rewriter.getF32FloatAttr(0.0f));
-  }
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      op, output_type, tf_relu6_op.features(), rewriter.getI64IntegerAttr(0),
+      rewriter.getI64IntegerAttr(6), rewriter.getF32FloatAttr(0.0f),
+      rewriter.getF32FloatAttr(6.0f));
   return success();
 }
 
@@ -280,7 +273,7 @@ LogicalResult ConvertTFAddNOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  SmallVector<Value, 8> inputs(tf_addn_op.inputs());
+  SmallVector<Value> inputs(tf_addn_op.inputs());
 
   assert(inputs.size() >= 2);
 
@@ -452,8 +445,16 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type || !y_type) return failure();
 
-  auto reciprocal_op =
-      rewriter.create<tosa::ReciprocalOp>(op->getLoc(), y_type, tf_div_op.y());
+  Type element_type = output_type.getElementType();
+
+  if (element_type.isa<IntegerType>()) {
+    rewriter.replaceOpWithNewOp<tosa::DivOp>(op, output_type, tf_div_op.x(),
+                                             tf_div_op.y());
+    return success();
+  }
+
+  auto reciprocal_op = rewriter.create<tosa::ReciprocalOp>(
+      op->getLoc(), tf_div_op.y().getType(), tf_div_op.y());
 
   auto mul_op = rewriter.create<tosa::MulOp>(
       op->getLoc(), output_type, tf_div_op.x(), reciprocal_op.getResult(), 0);
@@ -540,7 +541,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     ArrayAttr dilation =
         rewriter.getI64ArrayAttr({1, 1});  // Pooling has no non-unit dilation
 
-    SmallVector<int64_t, 2> i64array;
+    SmallVector<int64_t, 4> i64array;
 
     for (auto& elem : tf_avgpool_op.ksize()) {
       int64_t value = elem.dyn_cast<IntegerAttr>().getInt();
@@ -548,7 +549,7 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     }
 
     RankedTensorType filter_type = RankedTensorType::get(
-        llvm::makeArrayRef<int64_t>(i64array), rewriter.getIntegerType(64));
+        llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
             tf_pad,
@@ -618,7 +619,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
     }
 
     RankedTensorType filter_type = RankedTensorType::get(
-        llvm::makeArrayRef<int64_t>(i64array), rewriter.getIntegerType(64));
+        llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
 
     if (!getPaddingValuesFromPadType(
             tf_pad,
@@ -633,6 +634,27 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_concatv2_op = cast<TF::ConcatV2Op>(op);
+  SmallVector<Value> values(tf_concatv2_op.values());
+
+  ElementsAttr axis_elems;
+  if (!matchPattern(tf_concatv2_op.axis(), m_Constant(&axis_elems)))
+    return failure();
+
+  int32_t axis = axis_elems.getValue<IntegerAttr>({}).getInt();
+
+  llvm::Optional<Value> result =
+      convertConcatV2Op(rewriter, op, tf_concatv2_op.getResult(), values, axis);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 LogicalResult ConvertTFReshapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reshape_op = cast<TF::ReshapeOp>(op);
@@ -644,7 +666,7 @@ LogicalResult ConvertTFReshapeOp::matchAndRewrite(
 
   // Regular way to match tensor as element attribute doesn't always work
   // use output_type.getShape() which is more stable
-  SmallVector<int64_t, 8> shape_vals;
+  SmallVector<int64_t> shape_vals;
   for (int i = 0; i < output_type.getShape().size(); i++) {
     shape_vals.push_back(output_type.getShape()[i]);
   }
@@ -691,15 +713,15 @@ LogicalResult ConvertTFShapeOp::matchAndRewrite(
 
   auto input_shape = input_type.getShape();
 
-  SmallVector<int32_t, 8> shape_arr;
+  SmallVector<int32_t> shape_arr;
   for (int i = 0; i < input_shape.size(); i++) {
     shape_arr.emplace_back(input_shape[i]);
   }
 
   RankedTensorType shape_type = RankedTensorType::get(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr = DenseElementsAttr::get(
-      shape_type, llvm::makeArrayRef<int32_t>(shape_arr));
+  auto shape_attr =
+      DenseElementsAttr::get(shape_type, llvm::makeArrayRef(shape_arr));
   auto shape_const =
       rewriter.create<tosa::ConstOp>(op->getLoc(), shape_type, shape_attr);
 
@@ -729,7 +751,7 @@ LogicalResult ConvertTFSqueezeOp::matchAndRewrite(
 
   // Copy squeeze_dims into int32_t array
   auto squeeze_dims_attr = tf_squeeze_op.squeeze_dimsAttr();
-  SmallVector<int32_t, 8> squeeze_dims;
+  SmallVector<int32_t> squeeze_dims;
   for (auto& squeeze_dim : squeeze_dims_attr) {
     squeeze_dims.emplace_back(squeeze_dim.dyn_cast<IntegerAttr>().getInt());
   }
@@ -757,7 +779,7 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
   ElementsAttr dims_elems;
   if (!matchPattern(tf_fill_op.dims(), m_Constant(&dims_elems)))
     return failure();
-  SmallVector<int64_t, 4> dims_vals;
+  SmallVector<int64_t> dims_vals;
   uint32_t total_size = 1;
   for (int i = 0; i < dims_elems.getNumElements(); i++) {
     dims_vals.push_back(dims_elems.getValue<IntegerAttr>(i).getInt());
@@ -774,17 +796,15 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
 
   // Convert to a compatible zero type
   if (value_elem.getType().getElementType().isa<FloatType>()) {
-    llvm::SmallVector<float, 4> fill_arr(
+    SmallVector<float> fill_arr(
         total_size,
         value_elem.getValue<FloatAttr>(0).getValue().convertToFloat());
-    fill_attr =
-        DenseElementsAttr::get(fill_type, llvm::makeArrayRef<float>(fill_arr));
+    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   } else {
-    llvm::SmallVector<int32_t, 4> fill_arr(
+    SmallVector<int32_t> fill_arr(
         total_size,
         value_elem.getValue<IntegerAttr>(0).getValue().getLimitedValue());
-    fill_attr = DenseElementsAttr::get(fill_type,
-                                       llvm::makeArrayRef<int32_t>(fill_arr));
+    fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   }
   auto fill_const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), fill_type, fill_attr);
@@ -922,18 +942,21 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   // Transpose [H, W, I, O] to [O, H, W, I]
   auto filter_shape = filter_type.getShape();
-  llvm::SmallVector<int64_t, 4> a1_transpose_dims;
+  SmallVector<int64_t, 4> a1_transpose_dims;
   a1_transpose_dims.push_back(filter_shape[2]);
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[3]);
-  Value a1_filter_transpose_perm =
-      get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, {2, 0, 1, 3});
+  llvm::Optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
+      rewriter, op, /*vec=*/{2, 0, 1, 3}, /*shape=*/{4});
+
+  if (!a1_filter_transpose_perm) return failure();
+
   auto a1_filter_transpose_op = rewriter.create<tosa::TransposeOp>(
       op->getLoc(),
       RankedTensorType::get(ArrayRef<int64_t>(a1_transpose_dims),
                             filter_type.getElementType()),
-      tf_conv_op.filter(), a1_filter_transpose_perm);
+      tf_conv_op.filter(), a1_filter_transpose_perm.getValue());
 
   ArrayAttr stride;
   ArrayAttr dilation;
@@ -986,7 +1009,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
     // Match from input_sizes tensor first.
     if (matchPattern(tf_conv_op.input_sizes(),
                      m_Constant(&output_shape_elems))) {
-      llvm::SmallVector<int64_t, 4> shape_vec;
+      SmallVector<int64_t> shape_vec;
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
             output_shape_elems.getValue<IntegerAttr>(i).getInt());
@@ -997,14 +1020,17 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
     }
   }
 
-  SmallVector<float, 8> zero_bias_vec(output_type.getShape()[3], 0.0f);
-  Value zero_bias =
-      get1DConstTensor<tosa::ConstOp, float>(rewriter, op, zero_bias_vec);
+  int output_channel = output_type.getShape()[3];
+  SmallVector<float> vec(output_channel, 0.0f);
+  llvm::Optional<Value> zero_bias =
+      getConstTensor<float>(rewriter, op, vec, {output_channel});
+
+  if (!zero_bias) return failure();
 
   rewriter.replaceOpWithNewOp<tosa::TransposeConv2DOp>(
       op, output_type, tf_conv_op.out_backprop(),
-      a1_filter_transpose_op.getResult(), zero_bias, outpad, stride, dilation,
-      output_shape);
+      a1_filter_transpose_op.getResult(), zero_bias.getValue(), outpad, stride,
+      dilation, output_shape);
 
   return success();
 }
@@ -1209,8 +1235,9 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
-  llvm::Optional<Value> result = convertSoftmaxOp(
-      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits());
+  llvm::Optional<Value> result =
+      convertSoftmaxOp(rewriter, op, tf_softmax_op.getResult(),
+                       tf_softmax_op.logits(), /*beta=*/1.0);
 
   if (!result) return failure();
 
@@ -1400,7 +1427,7 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
 
   ElementsAttr begin_elems, size_elems;
 
-  SmallVector<int64_t, 4> begin_vals, size_vals;
+  SmallVector<int64_t> begin_vals, size_vals;
 
   // Assuming begin is always compile-time constant
   if (!matchPattern(tf_slice_op.begin(), m_Constant(&begin_elems))) {
@@ -1440,7 +1467,7 @@ LogicalResult ConvertTFTileOp::matchAndRewrite(
   ElementsAttr multiples_elems;
   if (!matchPattern(tf_tile_op.multiples(), m_Constant(&multiples_elems)))
     return failure();
-  SmallVector<int64_t, 4> multiples_vals;
+  SmallVector<int64_t> multiples_vals;
   for (int i = 0; i < multiples_elems.getNumElements(); i++)
     multiples_vals.push_back(multiples_elems.getValue<IntegerAttr>(i).getInt());
 
@@ -1469,6 +1496,29 @@ LogicalResult ConvertTFTransposeOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFPackOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_pack_op = cast<TF::PackOp>(op);
+
+  SmallVector<Value> inputs(tf_pack_op.values());
+
+  assert(inputs.size() >= 2);
+
+  IntegerAttr axis_attr = tf_pack_op.axisAttr();
+  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+
+  int32_t axis_i32 = axis_attr.getInt();
+
+  llvm::Optional<Value> result =
+      convertPackOp(rewriter, op, tf_pack_op.getResult(), inputs, axis_i32);
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 LogicalResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
@@ -1481,7 +1531,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   }
   int32_t axis_i32 = axis_attr.getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertUnpackOp(rewriter, op, tf_unpack_op.value(), axis_i32);
 
   if (!results) return failure();
@@ -1509,7 +1559,7 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
     axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
   }
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitOp(rewriter, op, tf_split_op.getResult(0),
                      tf_split_op.value(), num_split, axis);
 
@@ -1526,7 +1576,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
   // Get the size_splits array
-  SmallVector<int32_t, 4> size_split;
+  SmallVector<int32_t> size_split;
   ElementsAttr size_split_elems;
   if (!matchPattern(tf_splitv_op.size_splits(),
                     m_Constant(&size_split_elems))) {
@@ -1545,7 +1595,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
 
   int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
 
-  llvm::Optional<ValueRange> results =
+  llvm::Optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tf_splitv_op.getResult(0),
                       tf_splitv_op.value(), size_split, axis);
 
@@ -1670,11 +1720,49 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     return op->emitOpError("MatMul: a/b/output not ranked tensors");
   }
 
-  // Can only handle rank=2 inputs
-  if (a_type.getShape().size() != 2) return failure();
+  if (a_type.getRank() != b_type.getRank() ||
+      a_type.getRank() != output_type.getRank()) {
+    return op->emitOpError("MatMul: a/b/output rank must match");
+  }
 
-  rewriter.replaceOpWithNewOp<tosa::MatMulOp>(op, output_type, tf_matmul_op.a(),
-                                              tf_matmul_op.b());
+  // Can only handle rank 2 tensors for tf.MatMul.
+  // Cases with rank > 2 tensors should be handled by tf.BatchMatMul or
+  // tf.BatchMatMulV2
+  if (a_type.getRank() != 2) {
+    return op->emitOpError("MatMul: a/b/output rank must be 2");
+  }
+
+  SmallVector<int64_t, 3> batch_a_shape(
+      {1, a_type.getShape()[0], a_type.getShape()[1]});
+  SmallVector<int64_t, 3> batch_b_shape(
+      {1, b_type.getShape()[0], b_type.getShape()[1]});
+  SmallVector<int64_t, 3> batch_output_shape(
+      {1, output_type.getShape()[0], output_type.getShape()[1]});
+
+  RankedTensorType batch_a_type =
+      RankedTensorType::get(batch_a_shape, a_type.getElementType());
+  RankedTensorType batch_b_type =
+      RankedTensorType::get(batch_b_shape, b_type.getElementType());
+  RankedTensorType batch_output_type =
+      RankedTensorType::get(batch_output_shape, output_type.getElementType());
+
+  // Need to reshape input and output since TOSA matmul only supports
+  // [N, H, C] * [N, C, W] -> [N, H, W].
+  auto op1_reshape_a = rewriter.create<tosa::ReshapeOp>(
+      op->getLoc(), batch_a_type, tf_matmul_op.a(),
+      rewriter.getI64ArrayAttr(batch_a_shape));
+
+  auto op2_reshape_b = rewriter.create<tosa::ReshapeOp>(
+      op->getLoc(), batch_b_type, tf_matmul_op.b(),
+      rewriter.getI64ArrayAttr(batch_b_shape));
+
+  auto op3_matmul_op1_op2 = rewriter.create<tosa::MatMulOp>(
+      op->getLoc(), batch_output_type, op1_reshape_a.getResult(),
+      op2_reshape_b.getResult());
+
+  rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
+      op, output_type, op3_matmul_op1_op2.getResult(),
+      rewriter.getI64ArrayAttr(output_type.getShape()));
 
   return success();
 }
@@ -2108,6 +2196,81 @@ LogicalResult ConvertTFOneHotOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_batch_matmul_op = cast<TF::BatchMatMulV2Op>(op);
+
+  RankedTensorType x_type =
+      tf_batch_matmul_op.x().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType y_type =
+      tf_batch_matmul_op.y().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      tf_batch_matmul_op.getResult().getType().dyn_cast<RankedTensorType>();
+
+  if (!(x_type && y_type && output_type)) {
+    return op->emitOpError("BatchMatMulV2: x/y/output not ranked tensors");
+  }
+
+  if (x_type.getRank() != y_type.getRank() ||
+      x_type.getRank() != output_type.getRank()) {
+    return op->emitOpError("BatchMatMulV2: x/y/output rank must match");
+  }
+
+  if (x_type.getRank() <= 2) {
+    return op->emitOpError("BatchMatMulV2: x/y/output rank must > 2");
+  }
+
+  // Rank 3 batch matmul can be directly mapped to tosa.matmul trivially.
+  if (x_type.getRank() == 3) {
+    rewriter.replaceOpWithNewOp<tosa::MatMulOp>(
+        op, output_type, tf_batch_matmul_op.x(), tf_batch_matmul_op.y());
+  } else {
+    // 1. Reshape x from: (similar for y)
+    //  [a0, a1, ... an, H, C] to [N, H, C].
+    //  where N = a0 * a1 * ... * an.
+    // 2. tosa.MatMul
+    //  [N, H, C] * [N, C, W] -> [N, H, W].
+    // 3. Reshape output from:
+    //  [N, H, W] to [a0, a1, ... , an, H, W]
+    int64_t rank = x_type.getRank();
+    int64_t N = 1;
+    for (int i = 0; i < (rank - 2); i++) {
+      N *= x_type.getShape()[i];
+    }
+    int64_t H = x_type.getShape()[rank - 2];
+    int64_t C = x_type.getShape()[rank - 1];
+    int64_t W = y_type.getShape()[rank - 1];
+
+    SmallVector<int64_t, 3> rank3_x_shape({N, H, C});
+    SmallVector<int64_t, 3> rank3_y_shape({N, C, W});
+    SmallVector<int64_t, 3> rank3_output_shape({N, H, W});
+
+    RankedTensorType rank3_x_type =
+        RankedTensorType::get(rank3_x_shape, x_type.getElementType());
+    RankedTensorType rank3_y_type =
+        RankedTensorType::get(rank3_y_shape, y_type.getElementType());
+    RankedTensorType rank3_output_type =
+        RankedTensorType::get(rank3_output_shape, output_type.getElementType());
+
+    auto op1_reshape_x = rewriter.create<tosa::ReshapeOp>(
+        op->getLoc(), rank3_x_type, tf_batch_matmul_op.x(),
+        rewriter.getI64ArrayAttr(rank3_x_shape));
+
+    auto op2_reshape_y = rewriter.create<tosa::ReshapeOp>(
+        op->getLoc(), rank3_y_type, tf_batch_matmul_op.y(),
+        rewriter.getI64ArrayAttr(rank3_y_shape));
+
+    auto op3_matmul_op1_op2 = rewriter.create<tosa::MatMulOp>(
+        op->getLoc(), rank3_output_type, op1_reshape_x.getResult(),
+        op2_reshape_y.getResult());
+
+    rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
+        op, output_type, op3_matmul_op1_op2.getResult(),
+        rewriter.getI64ArrayAttr(output_type.getShape()));
+  }
+  return success();
+}
+
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
@@ -2139,6 +2302,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFArgMaxOp>(ctx);
   patterns.insert<ConvertTFAvgPoolOp>(ctx);
   patterns.insert<ConvertTFMaxPoolOp>(ctx);
+  patterns.insert<ConvertTFConcatV2Op>(ctx);
   patterns.insert<ConvertTFReshapeOp>(ctx);
   patterns.insert<ConvertTFRankOp>(ctx);
   patterns.insert<ConvertTFShapeOp>(ctx);
@@ -2163,6 +2327,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFBiasAddOp>(ctx);
   patterns.insert<ConvertTFSplitOp>(ctx);
   patterns.insert<ConvertTFSplitVOp>(ctx);
+  patterns.insert<ConvertTFPackOp>(ctx);
   patterns.insert<ConvertTFUnpackOp>(ctx);
   patterns.insert<ConvertTFTransposeOp>(ctx);
   patterns.insert<ConvertTFTileOp>(ctx);
@@ -2193,6 +2358,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFLeftShiftOp>(ctx);
   patterns.insert<ConvertTFRightShiftOp>(ctx);
   patterns.insert<ConvertTFOneHotOp>(ctx);
+  patterns.insert<ConvertTFBatchMatMulV2Op>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

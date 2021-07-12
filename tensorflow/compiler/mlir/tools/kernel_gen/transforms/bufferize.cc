@@ -77,14 +77,14 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<memref::DimOp> {
+class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      memref::DimOp op, ArrayRef<Value> operands,
+      tensor::DimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    memref::DimOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.memrefOrTensor(),
+    tensor::DimOp::Adaptor adaptor(operands);
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
                                                adaptor.index());
     return success();
   }
@@ -410,35 +410,14 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
   }
 };
 
-// Bufferize linalg.tensor_reshape to linalg.reshape. This changes the semantics
-// from value based to metadata-only, so it's only safe to use within
-// kernelgen's environment.
-// TODO(pifon): Revisit this when tensor.reshape lands.
-class BufferizeTensorReshapeOp
-    : public OpConversionPattern<linalg::TensorReshapeOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      linalg::TensorReshapeOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
-    linalg::TensorReshapeOp::Adaptor adaptor(operands);
-    auto result_type = op.getType().dyn_cast<RankedTensorType>();
-    if (!result_type) return failure();
-    auto memref_type =
-        MemRefType::get(result_type.getShape(), result_type.getElementType());
-    rewriter.replaceOpWithNewOp<linalg::ReshapeOp>(
-        op, memref_type, adaptor.src(), op.getReassociationExprs());
-    return success();
-  }
-};
 }  // namespace
 
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       RewritePatternSet *patterns) {
-  patterns->insert<BufferizeConstantOp, BufferizeDimOp,
-                   BufferizeAndConvertMinimumBroadcastShapesOp, BufferizeRankOp,
-                   BufferizeTensorReshapeOp>(*converter, context);
+  patterns->insert<BufferizeAndConvertMinimumBroadcastShapesOp,
+                   BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
+      *converter, context);
 }
 
 }  // namespace transforms

@@ -21,7 +21,7 @@ limitations under the License.
 // Also update tensorflow/tensorflow.bzl and
 // tensorflow/tools/pip_package/setup.py
 #define TF_MAJOR_VERSION 2
-#define TF_MINOR_VERSION 6
+#define TF_MINOR_VERSION 7
 #define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
@@ -108,7 +108,7 @@ limitations under the License.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 762  // Updated: 2021/5/10
+#define TF_GRAPH_DEF_VERSION 825  // Updated: 2021/7/12
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

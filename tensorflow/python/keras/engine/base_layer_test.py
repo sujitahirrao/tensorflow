@@ -88,8 +88,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertTrue(layer._instrumented_keras_api)
     self.assertTrue(layer._instrumented_keras_layer_class)
     self.assertFalse(layer._instrumented_keras_model_class)
-    self.assertTrue(base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add'))
-    base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add').set(False)
 
   @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer(self):
@@ -1616,11 +1614,6 @@ class IdentityLayer(base_layer.Layer):
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class DTypeTest(keras_parameterized.TestCase):
-
-  # This class only have tests relating to layer.dtype. Tests for dtype policies
-  # are in mixed_precision/keras_test.py
-
-  # TODO(reedwm): Maybe have a separate test file for input casting tests.
 
   def _const(self, dtype):
     return array_ops.constant(1, dtype=dtype)

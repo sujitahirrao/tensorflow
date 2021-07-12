@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, float, Eigen::half,
-          bfloat16, double, uint8, int16, int32, int64);
+REGISTER4(BinaryOp, CPU, "Maximum", functor::maximum, float, Eigen::half,
+          bfloat16, double);
+REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, int8, uint8, int16,
+          uint16, int32, uint32, int64, uint64);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Maximum", functor::maximum, float, Eigen::half,
@@ -38,5 +40,12 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::maximum<int32>>);
 #endif
+REGISTER_KERNEL_BUILDER(Name("Maximum")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::maximum<int32>>);
 
 }  // namespace tensorflow

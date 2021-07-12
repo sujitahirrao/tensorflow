@@ -177,7 +177,8 @@ def set_optimizer_jit(enabled: Union[bool, str]):
     Possible values:
      - `"autoclustering"` (`True` is a deprecated alias): perform
      [autoclustering](https://www.tensorflow.org/xla#auto-clustering)
-     (automatically identify and compile clusters of nodes) on all graphs using
+       (automatically identify and compile clusters of nodes) on all graphs
+       using
      [XLA](https://www.tensorflow.org/xla).
      - `False`: do not automatically compile any graphs.
   """
@@ -211,11 +212,10 @@ def set_optimizer_experimental_options(options):
   Args:
     options: Dictionary of experimental optimizer options to configure.
       Valid keys:
-      - layout_optimizer: Optimize tensor layouts
-        e.g. This will try to use NCHW layout on GPU which is faster.
-      - constant_folding: Fold constants
-        Statically infer the value of tensors when possible, and materialize the
-        result using constants.
+      - layout_optimizer: Optimize tensor layouts e.g. This will try to use NCHW
+        layout on GPU which is faster.
+      - constant_folding: Fold constants Statically infer the value of tensors
+        when possible, and materialize the result using constants.
       - shape_optimization: Simplify computations made on shapes.
       - remapping: Remap subgraphs onto more efficient implementations.
       - arithmetic_optimization: Simplify arithmetic ops with common
@@ -251,7 +251,10 @@ def get_soft_device_placement():
     1. there's no GPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
-
+  
+  If disabled, the placement is strict and CPU fallback is not allowed.
+  An error is raised when an Op cannot be placed onto its intended device.
+  
   Returns:
     If soft placement is enabled.
   """
@@ -316,14 +319,14 @@ def set_device_policy(device_policy):
     device_policy: A device policy.
       Valid values:
       - None: Switch to a system default.
-      - 'warn': Copies the tensors which are not on the right device and logs
-          a warning.
+      - 'warn': Copies the tensors which are not on the right device and logs a
+        warning.
       - 'explicit': Raises an error if the placement is not as required.
       - 'silent': Silently copies the tensors. Note that this may hide
-          performance problems as there is no notification provided when
-          operations are blocked on the tensor being copied between devices.
+        performance problems as there is no notification provided when
+        operations are blocked on the tensor being copied between devices.
       - 'silent_for_int32': silently copies `int32` tensors, raising errors on
-          the other ones.
+        the other ones.
 
   Raises:
       ValueError: If an invalid `device_policy` is passed.
@@ -382,8 +385,7 @@ def set_synchronous_execution(enable):
 
 @tf_export('config.list_physical_devices',
            'config.experimental.list_physical_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.list_physical_devices')
+@deprecation.deprecated_endpoints('config.experimental.list_physical_devices')
 def list_physical_devices(device_type=None):
   """Return a list of physical devices visible to the host runtime.
 
@@ -417,8 +419,7 @@ def list_physical_devices(device_type=None):
 
 @tf_export('config.list_logical_devices',
            'config.experimental.list_logical_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.list_logical_devices')
+@deprecation.deprecated_endpoints('config.experimental.list_logical_devices')
 def list_logical_devices(device_type=None):
   """Return a list of logical devices created by runtime.
 
@@ -454,8 +455,7 @@ def list_logical_devices(device_type=None):
 
 @tf_export('config.get_visible_devices',
            'config.experimental.get_visible_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.get_visible_devices')
+@deprecation.deprecated_endpoints('config.experimental.get_visible_devices')
 def get_visible_devices(device_type=None):
   """Get the list of visible physical devices.
 
@@ -488,8 +488,7 @@ def get_visible_devices(device_type=None):
 
 @tf_export('config.set_visible_devices',
            'config.experimental.set_visible_devices')
-@deprecation.deprecated_endpoints(
-    'config.experimental.set_visible_devices')
+@deprecation.deprecated_endpoints('config.experimental.set_visible_devices')
 def set_visible_devices(devices, device_type=None):
   """Set the list of visible devices.
 
@@ -523,6 +522,8 @@ def set_visible_devices(devices, device_type=None):
   context.context().set_visible_devices(devices, device_type)
 
 
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
 @tf_export('config.experimental.get_memory_info')
 def get_memory_info(device):
   """Get memory info for the chosen device, as a dict.
@@ -536,13 +537,15 @@ def get_memory_info(device):
   ...   tf.config.experimental.get_memory_info('GPU:0')
 
   Currently returns the following keys:
-    `'current'`: The current memory used by the device, in bytes.
-    `'peak'`: The peak memory used by the device across the run of the program,
-        in bytes.
+    - `'current'`: The current memory used by the device, in bytes.
+    - `'peak'`: The peak memory used by the device across the run of the
+        program, in bytes. Can be reset with
+        `tf.config.experimental.reset_memory_stats`.
 
   More keys may be added in the future, including device-specific keys.
 
-  Currently raises an exception for the CPU.
+  Currently only supports GPU and TPU. If called on a CPU device, an exception
+  will be raised.
 
   For GPUs, TensorFlow will allocate all the memory by default, unless changed
   with `tf.config.experimental.set_memory_growth`. The dict specifies only the
@@ -550,19 +553,65 @@ def get_memory_info(device):
   TensorFlow has allocated on the GPU.
 
   Args:
-    device: Device string to get the memory information for, e.g. `"GPU:0"`. See
-      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
-      strings.
+    device: Device string to get the memory information for, e.g. `"GPU:0"`,
+    `"TPU:0"`. See https://www.tensorflow.org/api_docs/python/tf/device for
+      specifying device strings.
 
   Returns:
     A dict with keys `'current'` and `'peak'`, specifying the current and peak
     memory usage respectively.
 
   Raises:
-    ValueError: Non-existent or CPU device specified.
-
+    ValueError: No device found with the device name, like '"nonexistent"'.
+    ValueError: Invalid device name, like '"GPU"', '"CPU:GPU"', '"CPU:"'.
+    ValueError: Multiple devices matched with the device name.
+    ValueError: Memory statistics not tracked, like '"CPU:0"'.
   """
   return context.context().get_memory_info(device)
+
+
+# TODO(b/188089869): Redesign memory stats related APIs before move them out of
+# experimental.
+# TODO(b/189498350): Unify the behavior on CPU, GPU and TPU.
+@tf_export('config.experimental.reset_memory_stats')
+def reset_memory_stats(device):
+  """Resets the tracked memory stats for the chosen device.
+
+  This function sets the tracked peak memory for a device to the device's
+  current memory usage. This allows you to measure the peak memory usage for a
+  specific part of your program. For example:
+
+  >>> if tf.config.list_physical_devices('GPU'):
+  ...   # Sets the peak memory to the current memory.
+  ...   tf.config.experimental.reset_memory_stats('GPU:0')
+  ...   # Creates the first peak memory usage.
+  ...   x1 = tf.ones(1000 * 1000, dtype=tf.float64)
+  ...   del x1 # Frees the memory referenced by `x1`.
+  ...   peak1 = tf.config.experimental.get_memory_info('GPU:0')['peak']
+  ...   # Sets the peak memory to the current memory again.
+  ...   tf.config.experimental.reset_memory_stats('GPU:0')
+  ...   # Creates the second peak memory usage.
+  ...   x2 = tf.ones(1000 * 1000, dtype=tf.float32)
+  ...   del x2
+  ...   peak2 = tf.config.experimental.get_memory_info('GPU:0')['peak']
+  ...   assert peak2 < peak1  # tf.float32 consumes less memory than tf.float64.
+
+  Currently only supports GPU and TPU. If called on a CPU device, an exception
+  will be raised.
+
+  Args:
+    device: Device string to reset the memory stats, e.g. `"GPU:0"`, `"TPU:0"`.
+      See https://www.tensorflow.org/api_docs/python/tf/device for specifying
+      device strings.
+
+  Raises:
+    ValueError: No device found with the device name, like '"nonexistent"'.
+    ValueError: Invalid device name, like '"GPU"', '"CPU:GPU"', '"CPU:"'.
+    ValueError: Multiple devices matched with the device name.
+    ValueError: Memory statistics not tracked or clearing memory statistics not
+      supported, like '"CPU:0"'.
+  """
+  context.context().reset_memory_stats(device)
 
 
 @deprecation.deprecated(

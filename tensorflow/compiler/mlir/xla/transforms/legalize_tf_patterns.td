@@ -16,6 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -31,8 +32,6 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
 
-def FeatureDimension : NativeCodeCall<
-    "getFeatureDimensionAttr($_builder, $0.getValue(), $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
@@ -55,21 +54,6 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
-
-def : Pattern<
-    (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
-                         $exponential_avg_factor, $data_format,
-                         FalseBoolAttr:$is_training),
-    [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
-                               $epsilon, (FeatureDimension $data_format, $x)),
-     // We already guaranteed that the last four results has no use so it
-     // does not matter what value we provide here for replacement.
-     /*batch_mean=*/(replaceWithValue $x),
-     /*batch_variance=*/(replaceWithValue $x),
-     /*reserve_space_1=*/(replaceWithValue $x),
-     /*reserve_space_2=*/(replaceWithValue $x)],
-    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
-     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.
@@ -126,13 +110,8 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // additional correction for a negative numerator / denominator. Equivalent
 // pseudocode is shown below:
 //
-// if ((x < 0) != (y < 0)) {
-//   T abs_x = std::abs(x);
-//   T abs_y = std::abs(y);
-//   return -(abs_x + abs_y - 1) / abs_y;
-// } else {
-//   return x / y;
-// }
+// T z = x / y
+// return (z * y != x && (x < 0) != (y < 0)) ? z - 1 : z
 //
 // BroadcastToDimensions is used to compute the broadcast attr to higher
 // dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
@@ -142,31 +121,39 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
 def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
-        (HLO_SelectOp
-         (HLOClient_BroadcastCompareOp
-          (HLOClient_BroadcastCompareOp $l, (HLO_ConstOp (GetScalarOfType<0> $l)),
-           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
-           (HLO_DEFAULT_COMPARISON_TYPE)),
-          (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (GetScalarOfType<0> $r)),
-           (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
-           (HLO_DEFAULT_COMPARISON_TYPE)),
-          (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ,
+      (HLO_SelectOp
+       (HLOClient_BroadcastAndOp
+        (HLOClient_BroadcastCompareOp
+         (HLOClient_BroadcastMulOp:$mul
+          (HLOClient_BroadcastDivOp:$div $l, $r,
+           (BinBroadcastDimensions $l, $r)),
+          $r, (BinBroadcastDimensions $div, $r)),
+         $l, (BinBroadcastDimensions $mul, $l), HLO_COMPARISON_DIRECTION_NE,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
+        (HLOClient_BroadcastCompareOp
+         (HLOClient_BroadcastCompareOp:$l_cmp $l,
+          (HLO_ConstOp:$l_zeros (GetScalarOfType<0> $l)),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
           (HLO_DEFAULT_COMPARISON_TYPE)),
-         (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
-         (HLOClient_BroadcastDivOp
-          (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
-                       (HLOClient_BroadcastSubOp (HLO_AbsOp $r),
-                        (HLO_ConstOp (GetScalarOfType<1> $r)),
-                        (NullDenseIntElementsAttr)),
-                     (BinBroadcastDimensions $l, $r))),
-          (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
-        [(SignedIntTensor $l)]>;
+         (HLOClient_BroadcastCompareOp:$r_cmp $r,
+          (HLO_ConstOp:$r_zeros (GetScalarOfType<0> $r)),
+          (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT,
+          (HLO_DEFAULT_COMPARISON_TYPE)),
+         (BinBroadcastDimensions $l_cmp, $r_cmp), HLO_COMPARISON_DIRECTION_NE,
+         (HLO_DEFAULT_COMPARISON_TYPE)),
+        (NullDenseIntElementsAttr)),
+       (HLOClient_BroadcastSubOp $div,
+        (HLO_ConstOp:$ones (GetScalarOfType<1> $div)),
+        (NullDenseIntElementsAttr)), $div),
+      [(SignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
 // values. Pseudocode shown below:
 //
 //   T trunc_mod = std::fmod(x, y);
 //   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
+//                                                     : trunc_mod
+//
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
 def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
@@ -452,23 +439,28 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           )]>;
 
 //===----------------------------------------------------------------------===//
-// Nullary op patterns.
+// Lower `tf.ZerosLike`
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
-          (Tensor_CastOp (HLO_ConstOp $value)),
-          [(HLO_Tensor $res)]>;
+def : Pat<(TF_ZerosLikeOp AnyTensor:$arg),
+          (HLO_ConstantLike<"0"> $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Lower `tf.OnesLike`
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_OnesLikeOp AnyTensor:$arg),
+          (HLO_ConstantLike<"1"> $arg)>;
 
 //===----------------------------------------------------------------------===//
 // Elu op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_EluOp AnyRankedTensor:$features),
+def : Pat<(TF_EluOp AnyTensor:$features),
           (HLO_SelectOp
-           (HLOClient_BroadcastCompareOp
+           (HLO_CompareOp
               $features,
-              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
-              (BinBroadcastDimensions $zero, $features),
+              (HLO_ConstantLike<"0">:$zero $features),
               HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
            $features,
            (HLO_Expm1Op $features))>;
@@ -511,13 +503,45 @@ def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
+// The condition that $gradients and $features need to have the same shape is
+// implicitly enforced: $zero is created to have the same shape as $features,
+// HLO_SelectOp enforces that $gradients and $zero have the same shape.
 def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
-          (HLOClient_BroadcastSelectOp
-            (HLOClient_BroadcastCompareOp $features,
-              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
-              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT,
-              (HLO_DEFAULT_COMPARISON_TYPE)),
+          (HLO_SelectOp
+            (HLO_CompareOp $features, (HLO_ConstantLike<"0">:$zero $features),
+              HLO_COMPARISON_DIRECTION_GT, (HLO_DEFAULT_COMPARISON_TYPE)),
             $gradients, $zero)>;
+
+//===----------------------------------------------------------------------===//
+// Softsign op patterns.
+//===----------------------------------------------------------------------===//
+
+/// Converts a TF::SoftsignOp to HLO.
+/// Softsign(features) = features / (1 + abs(features))
+def : Pat<(TF_SoftsignOp AnyRankedTensor:$input),
+          (HLO_DivOp
+            $input,
+            (HLOClient_BroadcastAddOp:$add
+              (HLO_ConstOp:$one (GetScalarOfType<1> $input)), (HLO_AbsOp $input),
+              (BinBroadcastDimensions $one, $input)
+            )
+          )
+         >;
+
+/// Converts a TF::SoftsignGradOp to HLO.
+/// SoftsignGrad(gradient, features) = gradient / ((1 + abs(features)) ^ 2)
+def : Pattern<
+        (TF_SoftsignGradOp AnyRankedTensor:$gradients, AnyRankedTensor:$features),
+        [(HLOClient_BroadcastAddOp:$add
+          (HLO_ConstOp:$one (GetScalarOfType<1> $features)), (HLO_AbsOp $features),
+          (BinBroadcastDimensions $one, $features)
+         ),
+         (HLOClient_BroadcastDivOp
+           $gradients,
+           (HLO_MulOp $add, $add),
+           (BinBroadcastDimensions $gradients, $add)
+         )
+        ]>;
 
 //===----------------------------------------------------------------------===//
 // Slice op patterns.
@@ -640,8 +664,12 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 // TODO(hinsu): Update once HLO supports dynamic reshaping ops.
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res $arg, $ignored),
-            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
+            (addBenefit 2)>;
 }
+
+def : Pat<(TF_ReshapeOp:$res $arg, $shape),
+          (HLOClient_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;

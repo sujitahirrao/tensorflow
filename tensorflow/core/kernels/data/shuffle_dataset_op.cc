@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -64,10 +65,7 @@ constexpr char kNumElements[] = "num_elements";
 constexpr char kSlicesSize[] = "slices_size";
 constexpr char kSlicesStart[] = "slices_start";
 constexpr char kSlicesEnd[] = "slices_end";
-constexpr char kBuffer[] = "buffer";
-constexpr char kSize[] = "size";
 constexpr char kSeedGenerator[] = "SeedGenerator";
-constexpr char kTFData[] = "tf_data";
 constexpr char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 constexpr char kShuffleDatasetV1[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";
@@ -187,7 +185,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             data_produced_ = true;
             break;
           }
-          if (ctx->split_provider() == nullptr && !data_produced_ &&
+          if (ctx->split_providers().empty() && !data_produced_ &&
               this->dataset()->count_ == -1) {
             // If we encounter the end of sequence without producing data, we
             // terminate the iteration immediately. (Otherwise, this iterator
@@ -198,8 +196,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           epoch_++;
           int64 n = slices_.back()->end;
           slices_.push_back(absl::make_unique<Slice>(n, n));
-          if (ctx->split_provider()) {
-            TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+          for (const auto& provider : ctx->split_providers()) {
+            TF_RETURN_IF_ERROR(provider->Reset());
           }
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
               ctx, this, this->prefix(), &input_impl_));
@@ -360,7 +358,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
           this->dataset()->buffer_size_);
       TF_RETURN_IF_ERROR(
-          ReadElementsFromCheckpoint(reader, prefix(), buffer_.get()));
+          ReadElementsFromCheckpoint(ctx, reader, prefix(), buffer_.get()));
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
