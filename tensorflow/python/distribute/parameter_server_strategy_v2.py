@@ -27,6 +27,7 @@ import os
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
@@ -803,20 +804,17 @@ class ParameterServerStrategyV2Extended(
         input_workers_devices, canonicalize_devices=False)
 
   def _experimental_distribute_dataset(self, dataset, options):
-    self._assert_used_with_cluster_coordinator()
-    if not ops.get_default_graph().building_function:
-      raise ValueError(
-          "The `experimental_distribute_dataset` method must be called inside "
-          "a `tf.function` passed to `create_per_worker_dataset` of "
-          "`tf.distribute.experimental.coordinator.ClusterCoordinator`")
-
     input_workers_devices = self._input_workers_with_options()
 
+    # If this DistributedDataset is created outside ClusterCoordinator, i,e,
+    # outside a tf.function, we don't build its underlying datasets immediately
+    # until it is passed to ClusterCoordinator.create_per_worker_dataset.
     return input_lib.get_distributed_dataset(
         dataset,
         input_workers_devices,
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
+        build=ops.inside_function(),  # will be built by ClusterCoordinator
         options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
@@ -856,8 +854,14 @@ class ParameterServerStrategyV2Extended(
   def _call_for_each_replica(self, fn, args, kwargs):
     self._assert_being_scheduled_by_cluster_coordinator()
 
-    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
-                                              args, kwargs)
+    if not distribute_utils.caching_scope_local.in_caching_scope(
+    ) and self._num_replicas_in_sync > 1:
+      with distribute_utils.cache_variable_reads():
+        return mirrored_run.call_for_each_replica(self._container_strategy(),
+                                                  fn, args, kwargs)
+    else:
+      return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
+                                                args, kwargs)
 
   def _reduce(self, reduce_op, value):
     self._assert_being_scheduled_by_cluster_coordinator()
